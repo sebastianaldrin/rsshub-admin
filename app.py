@@ -547,22 +547,63 @@ def load_settings():
             else:
                 app.config[setting.key] = setting.value
 
-# Initialization
-@app.before_first_request
-def init_app():
-    # Create tables
+# Create a command to initialize the database
+@app.cli.command('init-db')
+def init_db_command():
+    """Create the database tables."""
     db.create_all()
-    
-    # Load settings
-    load_settings()
-    
-    # Initialize scheduler
-    init_scheduler()
+    print('Initialized the database.')
 
-# Start the app
+# Create a command to load settings
+@app.cli.command('load-settings')
+def load_settings_command():
+    """Load settings from database into app config."""
+    settings = SystemSettings.query.all()
+    
+    for setting in settings:
+        # Convert value to appropriate type
+        if setting.key == 'CHECK_INTERVAL':
+            app.config[setting.key] = int(setting.value)
+        else:
+            app.config[setting.key] = setting.value
+    
+    print('Settings loaded.')
+
+# Create a command to start the scheduler
+@app.cli.command('start-scheduler')
+def start_scheduler_command():
+    """Start the background scheduler."""
+    init_scheduler()
+    print('Scheduler started.')
+
+# Setup code now happens with app context
+def setup_app(app):
+    with app.app_context():
+        # Create tables
+        db.create_all()
+        
+        # Load settings
+        settings = SystemSettings.query.all()
+        for setting in settings:
+            if setting.key == 'CHECK_INTERVAL':
+                app.config[setting.key] = int(setting.value)
+            else:
+                app.config[setting.key] = setting.value
+        
+        # Initialize scheduler
+        init_scheduler()
+
+# Modified app initialization
 if __name__ == '__main__':
     # Get port from environment or use default
     port = int(os.environ.get('PORT', 5000))
     
+    # Setup app
+    setup_app(app)
+    
     # Run the app
     app.run(host='0.0.0.0', port=port, debug=True)
+else:
+    # When imported as a module (e.g., by gunicorn)
+    # Still perform setup when the module is imported
+    app.before_request_funcs.setdefault(None, []).insert(0, lambda: setup_app(app) if not getattr(app, '_got_first_request', False) else None)
