@@ -274,7 +274,7 @@ def validate_rsshub_route(route):
     full_url = urljoin(rsshub_base_url, route)
     
     try:
-        response = requests.get(full_url, timeout=10)
+        response = requests.get(full_url, timeout=30)
         response.raise_for_status()
         
         # Try to parse as RSS
@@ -333,7 +333,7 @@ def get_feed_preview(rsshub_route, max_items=3):
     full_url = urljoin(rsshub_base_url, route)
     
     try:
-        response = requests.get(full_url, timeout=10)
+        response = requests.get(full_url, timeout=30)
         response.raise_for_status()
         
         # Parse the feed
