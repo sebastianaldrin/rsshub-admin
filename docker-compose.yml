@@ -1,23 +1,63 @@
-FROM python:3.9-slim
+version: '3'
 
-WORKDIR /app
+services:
+  rsshub:
+    image: diygod/rsshub
+    container_name: rsshub
+    restart: always
+    ports:
+      - "1200:1200"
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: redis
+      REDIS_URL: "redis://redis:6379/"
+      PUPPETEER_WS_ENDPOINT: "ws://browserless:3000"
+    depends_on:
+      - redis
+      - browserless
+    networks:
+      - rsshub-network
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+  browserless:
+    image: browserless/chrome
+    container_name: browserless
+    restart: always
+    environment:
+      MAX_CONCURRENT_SESSIONS: 10
+      PREBOOT_CHROME: "true"
+      CONNECTION_TIMEOUT: 60000
+    networks:
+      - rsshub-network
 
-# Copy application code
-COPY . .
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: always
+    volumes:
+      - redis-data:/data
+    networks:
+      - rsshub-network
 
-# Create necessary directories
-RUN mkdir -p instance
+  rsshub-admin:
+    build: .
+    container_name: rsshub-admin
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - RSSHUB_BASE_URL=http://rsshub:1200
+      - SECRET_KEY=change-this-to-a-random-string
+    volumes:
+      - ./instance:/app/instance
+    depends_on:
+      - rsshub
+    networks:
+      - rsshub-network
 
-# Set environment variables
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
+networks:
+  rsshub-network:
 
-# Expose port
-EXPOSE 5000
-
-# Run the application with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+volumes:
+  redis-data:
