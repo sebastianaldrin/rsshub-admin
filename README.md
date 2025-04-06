@@ -28,7 +28,7 @@ The included docker-compose.yml file sets up a complete environment with:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/rsshub-admin.git
+git clone https://github.com/sebastianaldrin/rsshub-admin.git
 cd rsshub-admin
 
 # Start the services
@@ -41,7 +41,7 @@ docker-compose up -d
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/rsshub-admin.git
+git clone https://github.com/sebastianaldrin/rsshub-admin.git
 cd rsshub-admin
 
 # Create virtual environment
