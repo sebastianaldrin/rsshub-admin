@@ -17,13 +17,16 @@ from utils import (
 # Create Flask app
 app = Flask(__name__, instance_relative_config=True)
 
-# Load default configuration
+# Load default configuration, allowing env overrides
 app.config.from_mapping(
-    SECRET_KEY='dev',
-    SQLALCHEMY_DATABASE_URI='sqlite:///' + os.path.join(app.instance_path, 'app.db'),
+    SECRET_KEY=os.getenv('SECRET_KEY', 'dev'),
+    SQLALCHEMY_DATABASE_URI=os.getenv(
+        'DATABASE_URL',
+        'sqlite:///' + os.path.join(app.instance_path, 'app.db')
+    ),
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
-    RSSHUB_BASE_URL='http://localhost:1200',
-    CHECK_INTERVAL=30,  # Minutes
+    RSSHUB_BASE_URL=os.getenv('RSSHUB_BASE_URL', 'http://localhost:1200'),
+    CHECK_INTERVAL=int(os.getenv('CHECK_INTERVAL', 30)),
 )
 
 # Ensure the instance folder exists
