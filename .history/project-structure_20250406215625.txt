@@ -1,0 +1,22 @@
+rsshub_admin/
+├── app.py                   # Main Flask application
+├── config.py                # Configuration settings
+├── models.py                # Database models
+├── utils.py                 # Utility functions for RSS parsing
+├── requirements.txt         # Python dependencies
+├── Dockerfile               # Container definition
+├── docker-compose.yml       # Multi-container setup with RSSHub
+├── README.md                # Documentation
+├── static/                  # Static assets
+│   ├── css/
+│   │   └── main.css         # Custom CSS
+│   └── js/
+│       └── main.js          # JavaScript for interactive features
+└── templates/               # Jinja2 templates
+    ├── base.html            # Base template with navigation
+    ├── dashboard.html       # Main dashboard
+    ├── feed_list.html       # List of all feeds
+    ├── feed_detail.html     # Individual feed view
+    ├── add_feed.html        # Add/edit feed form
+    ├── settings.html        # System settings page
+    └── alerts.html          # System alerts page

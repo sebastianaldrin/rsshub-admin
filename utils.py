@@ -1,0 +1,385 @@
+import feedparser
+import requests
+from bs4 import BeautifulSoup
+import json
+import re
+import time
+from datetime import datetime
+from urllib.parse import urlparse, urljoin
+from flask import current_app
+from models import db, FeedSource, FetchLog, FeedItem, Alert
+
+
+def fetch_and_parse_feed(feed_source, save_items=True):
+    """
+    Fetch and parse an RSS feed from a FeedSource
+    
+    Args:
+        feed_source: FeedSource object
+        save_items: Whether to save parsed items to database
+    
+    Returns:
+        tuple: (status, message, feed_data, items_count)
+    """
+    start_time = time.time()
+    
+    # Construct the full RSSHub URL
+    rsshub_base_url = current_app.config.get('RSSHUB_BASE_URL')
+    if not rsshub_base_url:
+        return 'error', 'RSSHub base URL not configured', None, 0
+    
+    # Remove leading slash if present
+    route = feed_source.rsshub_route.lstrip('/')
+    full_url = urljoin(rsshub_base_url, route)
+    
+    # Fetch the feed
+    try:
+        response = requests.get(full_url, timeout=30)
+        response.raise_for_status()
+        
+        # Parse the feed
+        feed_data = feedparser.parse(response.content)
+        
+        # Check if feed is valid
+        if not feed_data.entries:
+            message = "Feed parsed but contains no items"
+            status = "warning"
+        else:
+            message = f"Successfully fetched {len(feed_data.entries)} items"
+            status = "success"
+        
+        # Calculate quality metrics
+        title_lengths = []
+        content_lengths = []
+        image_count = 0
+        
+        # Process feed items
+        if save_items and feed_data.entries:
+            # Clear existing items for this source
+            FeedItem.query.filter_by(feed_source_id=feed_source.id).delete()
+            
+            # Add new items
+            for entry in feed_data.entries:
+                # Extract data with fallbacks
+                title = getattr(entry, 'title', 'No Title')
+                link = getattr(entry, 'link', '')
+                guid = getattr(entry, 'id', link)
+                description = getattr(entry, 'summary', '')
+                
+                # Try different content fields
+                content = ''
+                if hasattr(entry, 'content'):
+                    content = entry.content[0].value
+                elif hasattr(entry, 'content_encoded'):
+                    content = entry.content_encoded
+                elif hasattr(entry, 'description'):
+                    content = entry.description
+                
+                # Get author
+                author = None
+                if hasattr(entry, 'author'):
+                    author = entry.author
+                elif hasattr(entry, 'author_detail') and hasattr(entry.author_detail, 'name'):
+                    author = entry.author_detail.name
+                
+                # Get publication date
+                published_at = None
+                if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                    try:
+                        published_at = datetime(*entry.published_parsed[:6])
+                    except:
+                        pass
+                
+                # Find image
+                image_url = None
+                if hasattr(entry, 'media_content') and entry.media_content:
+                    for media in entry.media_content:
+                        if 'url' in media and (
+                            'image' in media.get('type', '') or 
+                            media.get('url', '').lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))
+                        ):
+                            image_url = media.get('url')
+                            break
+                
+                # If no image found in media, try to extract from content
+                if not image_url and content:
+                    soup = BeautifulSoup(content, 'lxml')
+                    img_tag = soup.find('img')
+                    if img_tag and img_tag.get('src'):
+                        image_url = img_tag.get('src')
+                
+                # Count images for metrics
+                if image_url:
+                    image_count += 1
+                
+                # Calculate quality metrics
+                title_lengths.append(len(title))
+                
+                # Count real text content (exclude HTML)
+                text_content = ''
+                if content:
+                    text_content = BeautifulSoup(content, 'lxml').get_text()
+                content_lengths.append(len(text_content))
+                
+                # Check for full content
+                has_full_content = len(text_content) > 200
+                
+                # Count words
+                word_count = len(re.findall(r'\w+', text_content)) if text_content else 0
+                
+                # Check for quality issues
+                quality_issues = []
+                if not title or len(title) < 10:
+                    quality_issues.append("short_title")
+                if not content or len(text_content) < 100:
+                    quality_issues.append("short_content")
+                if not image_url:
+                    quality_issues.append("no_image")
+                
+                # Create new feed item
+                item = FeedItem(
+                    feed_source_id=feed_source.id,
+                    title=title,
+                    link=link,
+                    guid=guid,
+                    description=description,
+                    content=content,
+                    author=author,
+                    image_url=image_url,
+                    published_at=published_at,
+                    has_full_content=has_full_content,
+                    word_count=word_count,
+                    quality_issues=json.dumps(quality_issues) if quality_issues else None
+                )
+                db.session.add(item)
+            
+            # Commit all items at once
+            db.session.commit()
+        
+        # Calculate average metrics
+        avg_title_length = sum(title_lengths) / len(title_lengths) if title_lengths else 0
+        avg_content_length = sum(content_lengths) / len(content_lengths) if content_lengths else 0
+        
+        # Calculate quality score (0-100)
+        quality_score = calculate_quality_score(
+            item_count=len(feed_data.entries),
+            avg_content_length=avg_content_length,
+            image_ratio=image_count / len(feed_data.entries) if feed_data.entries else 0
+        )
+        
+        # Create fetch log
+        fetch_duration = time.time() - start_time
+        fetch_log = FetchLog(
+            feed_source_id=feed_source.id,
+            status=status,
+            http_status=response.status_code,
+            item_count=len(feed_data.entries),
+            avg_title_length=avg_title_length,
+            avg_content_length=avg_content_length,
+            images_count=image_count,
+            quality_score=quality_score,
+            fetch_duration=fetch_duration
+        )
+        db.session.add(fetch_log)
+        db.session.commit()
+        
+        # Create alert if quality is low
+        if quality_score < 50 and status == 'success':
+            create_alert(
+                feed_source.id,
+                'warning',
+                f"Low quality feed: {feed_source.name} (Score: {quality_score:.1f}/100)"
+            )
+        
+        return status, message, feed_data, len(feed_data.entries)
+        
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        
+        # Create error log
+        fetch_log = FetchLog(
+            feed_source_id=feed_source.id,
+            status='error',
+            http_status=getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None,
+            error_message=error_msg,
+            fetch_duration=time.time() - start_time
+        )
+        db.session.add(fetch_log)
+        
+        # Create alert
+        create_alert(
+            feed_source.id, 
+            'error', 
+            f"Failed to fetch feed: {feed_source.name} - {error_msg}"
+        )
+        
+        db.session.commit()
+        return 'error', error_msg, None, 0
+
+
+def calculate_quality_score(item_count, avg_content_length, image_ratio):
+    """Calculate a quality score from 0-100 based on various metrics"""
+    # Base score
+    score = 50
+    
+    # Item count score (0-20)
+    if item_count >= 10:
+        score += 20
+    elif item_count >= 5:
+        score += 10
+    elif item_count >= 1:
+        score += 5
+    
+    # Content length score (0-50)
+    if avg_content_length >= 1000:
+        score += 30
+    elif avg_content_length >= 500:
+        score += 20
+    elif avg_content_length >= 200:
+        score += 10
+    
+    # Image ratio score (0-20)
+    if image_ratio >= 0.8:
+        score += 20
+    elif image_ratio >= 0.5:
+        score += 15
+    elif image_ratio >= 0.3:
+        score += 10
+    elif image_ratio > 0:
+        score += 5
+    
+    # Cap score at 100
+    return min(score, 100)
+
+
+def create_alert(feed_source_id, level, message):
+    """Create a system alert"""
+    alert = Alert(
+        feed_source_id=feed_source_id,
+        level=level,
+        message=message
+    )
+    db.session.add(alert)
+    # Don't commit here, let the caller commit
+
+
+def validate_rsshub_route(route):
+    """Validate if a RSSHub route exists and returns valid RSS"""
+    rsshub_base_url = current_app.config.get('RSSHUB_BASE_URL')
+    if not rsshub_base_url:
+        return False, "RSSHub base URL not configured"
+    
+    # Remove leading slash if present
+    route = route.lstrip('/')
+    full_url = urljoin(rsshub_base_url, route)
+    
+    try:
+        response = requests.get(full_url, timeout=10)
+        response.raise_for_status()
+        
+        # Try to parse as RSS
+        feed = feedparser.parse(response.content)
+        
+        if not hasattr(feed, 'feed') or not hasattr(feed, 'entries'):
+            return False, "Invalid RSS feed format"
+        
+        if not feed.entries:
+            return True, "Feed is valid but contains no items"
+        
+        return True, f"Valid feed with {len(feed.entries)} items"
+        
+    except requests.exceptions.RequestException as e:
+        return False, f"Request error: {str(e)}"
+    except Exception as e:
+        return False, f"Parse error: {str(e)}"
+
+
+def check_all_feeds():
+    """Check all active feeds and update their status"""
+    sources = FeedSource.query.filter_by(is_active=True).all()
+    
+    for source in sources:
+        fetch_and_parse_feed(source)
+        
+    return len(sources)
+
+
+def get_feed_health(feed_source_id, days=7):
+    """Get feed health metrics for the given period"""
+    logs = FetchLog.query.filter_by(
+        feed_source_id=feed_source_id
+    ).order_by(FetchLog.fetched_at.desc()).limit(days).all()
+    
+    success_rate = sum(1 for log in logs if log.status == 'success') / len(logs) if logs else 0
+    avg_quality = sum(log.quality_score for log in logs if log.quality_score) / len(logs) if logs else 0
+    avg_items = sum(log.item_count for log in logs) / len(logs) if logs else 0
+    
+    return {
+        'success_rate': success_rate,
+        'avg_quality': avg_quality,
+        'avg_items': avg_items,
+        'total_checks': len(logs)
+    }
+
+
+def get_feed_preview(rsshub_route, max_items=3):
+    """Get a preview of feed items without saving to database"""
+    rsshub_base_url = current_app.config.get('RSSHUB_BASE_URL')
+    if not rsshub_base_url:
+        return None
+    
+    # Remove leading slash if present
+    route = rsshub_route.lstrip('/')
+    full_url = urljoin(rsshub_base_url, route)
+    
+    try:
+        response = requests.get(full_url, timeout=10)
+        response.raise_for_status()
+        
+        # Parse the feed
+        feed_data = feedparser.parse(response.content)
+        
+        preview_items = []
+        for entry in feed_data.entries[:max_items]:
+            # Extract content
+            content = ''
+            if hasattr(entry, 'content'):
+                content = entry.content[0].value
+            elif hasattr(entry, 'content_encoded'):
+                content = entry.content_encoded
+            elif hasattr(entry, 'description'):
+                content = entry.description
+            
+            # Find image
+            image_url = None
+            if hasattr(entry, 'media_content') and entry.media_content:
+                for media in entry.media_content:
+                    if 'url' in media and (
+                        'image' in media.get('type', '') or 
+                        media.get('url', '').lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))
+                    ):
+                        image_url = media.get('url')
+                        break
+            
+            # If no image found in media, try to extract from content
+            if not image_url and content:
+                soup = BeautifulSoup(content, 'lxml')
+                img_tag = soup.find('img')
+                if img_tag and img_tag.get('src'):
+                    image_url = img_tag.get('src')
+            
+            item = {
+                'title': getattr(entry, 'title', 'No Title'),
+                'link': getattr(entry, 'link', ''),
+                'description': getattr(entry, 'summary', ''),
+                'content': content,
+                'image_url': image_url,
+                'published': getattr(entry, 'published', None)
+            }
+            preview_items.append(item)
+        
+        return preview_items
+        
+    except Exception as e:
+        current_app.logger.error(f"Error previewing feed {rsshub_route}: {str(e)}")
+        return None

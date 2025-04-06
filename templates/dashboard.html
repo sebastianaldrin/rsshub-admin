@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - RSSHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>Dashboard</h1>
+        <p class="text-muted">Monitor and manage your RSSHub feeds</p>
+    </div>
+    <div class="col-auto">
+        <a href="{{ url_for('add_feed') }}" class="btn btn-primary">
+            <i class="bi bi-plus"></i> Add New Feed
+        </a>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Total Feeds</h5>
+                <h2 class="card-text text-primary">{{ total_feeds }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Active Feeds</h5>
+                <h2 class="card-text text-success">{{ active_feeds }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Categories</h5>
+                <h2 class="card-text text-info">{{ categories|length }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Alerts</h5>
+                <h2 class="card-text {% if alerts|length > 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ alerts|length }}
+                </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Alerts -->
+<div class="row mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Alerts</h5>
+                <a href="{{ url_for('alert_list') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                {% if alerts %}
+                <div class="list-group list-group-flush">
+                    {% for alert in alerts %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">
+                                {% if alert.level == 'error' %}
+                                <span class="badge bg-danger">Error</span>
+                                {% elif alert.level == 'warning' %}
+                                <span class="badge bg-warning text-dark">Warning</span>
+                                {% else %}
+                                <span class="badge bg-info">Info</span>
+                                {% endif %}
+                                {% if alert.feed_source_id %}
+                                <a href="{{ url_for('feed_detail', feed_id=alert.feed_source_id) }}">
+                                    {{ alert.message }}
+                                </a>
+                                {% else %}
+                                {{ alert.message }}
+                                {% endif %}
+                            </h6>
+                            <small class="text-muted">{{ alert.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                        </div>
+                        <form method="post" action="{{ url_for('mark_alert_read', alert_id=alert.id) }}" class="mt-2">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Mark as Read</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center p-4">
+                    <p class="text-muted mb-0">No unread alerts</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Feed Categories -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">Feed Categories</h5>
+            </div>
+            <div class="card-body">
+                {% if categories %}
+                <canvas id="categoryChart" width="400" height="250"></canvas>
+                {% else %}
+                <div class="text-center p-4">
+                    <p class="text-muted mb-0">No categories defined</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Recent Feed Activity</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Feed</th>
+                        <th>Category</th>
+                        <th>Last Check</th>
+                        <th>Status</th>
+                        <th>Quality</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for feed, last_check, status, quality_score in feeds[:10] %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('feed_detail', feed_id=feed.id) }}">{{ feed.name }}</a>
+                            {% if not feed.is_active %}
+                            <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ feed.category or 'Uncategorized' }}</td>
+                        <td>
+                            {% if last_check %}
+                            {{ last_check.strftime('%Y-%m-%d %H:%M') }}
+                            {% else %}
+                            Never
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if status == 'success' %}
+                            <span class="badge bg-success">Success</span>
+                            {% elif status == 'error' %}
+                            <span class="badge bg-danger">Error</span>
+                            {% elif status == 'warning' %}
+                            <span class="badge bg-warning text-dark">Warning</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Unknown</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if quality_score %}
+                            <div class="progress" style="height: 15px;">
+                                <div class="progress-bar {% if quality_score >= 80 %}bg-success{% elif quality_score >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ quality_score }}%;" 
+                                     aria-valuenow="{{ quality_score }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ quality_score|int }}%
+                                </div>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">No data</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('feed_detail', feed_id=feed.id) }}" class="btn btn-outline-primary">View</a>
+                                <form method="post" action="{{ url_for('check_feed', feed_id=feed.id) }}" style="display: inline;">
+                                    <button type="submit" class="btn btn-outline-secondary">Check Now</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer text-center">
+        <a href="{{ url_for('feed_list') }}" class="btn btn-outline-primary">View All Feeds</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Category Chart
+        {% if categories %}
+        var ctx = document.getElementById('categoryChart').getContext('2d');
+        var categoryChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: [
+                    {% for category, count in categories %}
+                    '{{ category or "Uncategorized" }}',
+                    {% endfor %}
+                ],
+                datasets: [{
+                    data: [
+                        {% for category, count in categories %}
+                        {{ count }},
+                        {% endfor %}
+                    ],
+                    backgroundColor: [
+                        '#4e73df',
+                        '#1cc88a',
+                        '#36b9cc',
+                        '#f6c23e',
+                        '#e74a3b',
+                        '#5a5c69',
+                        '#6f42c1',
+                        '#fd7e14',
+                        '#20c997',
+                        '#6c757d'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    }
+                }
+            }
+        });
+        {% endif %}
+    });
+</script>
+{% endblock %}

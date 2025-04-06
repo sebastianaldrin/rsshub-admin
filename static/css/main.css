@@ -1,0 +1,131 @@
+/* RSSHub Admin Custom Styles */
+
+/* Utility Classes */
+.cursor-pointer {
+    cursor: pointer;
+}
+
+/* Card Improvements */
+.card {
+    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+    border: 1px solid #e3e6f0;
+    border-radius: 0.35rem;
+}
+
+.card-header {
+    background-color: #f8f9fc;
+    border-bottom: 1px solid #e3e6f0;
+}
+
+/* Table Improvements */
+.table > :not(:last-child) > :last-child > * {
+    border-bottom-color: #e3e6f0;
+}
+
+/* Content Preview */
+.content-preview {
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: #f8f9fc;
+}
+
+.content-preview img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Badges */
+.badge.bg-warning {
+    color: #212529 !important;
+}
+
+/* Feed quality colors */
+.quality-high {
+    color: #1cc88a;
+}
+
+.quality-medium {
+    color: #f6c23e;
+}
+
+.quality-low {
+    color: #e74a3b;
+}
+
+/* Navbar improvements */
+.navbar-dark {
+    background-color: #4e73df !important;
+}
+
+/* Form improvements */
+.form-control:focus {
+    border-color: #4e73df;
+    box-shadow: 0 0 0 0.25rem rgba(78, 115, 223, 0.25);
+}
+
+.btn-primary {
+    background-color: #4e73df;
+    border-color: #4e73df;
+}
+
+.btn-primary:hover {
+    background-color: #2e59d9;
+    border-color: #2653d4;
+}
+
+.btn-outline-primary {
+    color: #4e73df;
+    border-color: #4e73df;
+}
+
+.btn-outline-primary:hover {
+    background-color: #4e73df;
+    border-color: #4e73df;
+    color: #fff;
+}
+
+/* Alerts */
+.alert {
+    border-radius: 0.35rem;
+    border-left-width: 0.25rem;
+}
+
+.alert-success {
+    border-left-color: #1cc88a;
+}
+
+.alert-danger {
+    border-left-color: #e74a3b;
+}
+
+.alert-warning {
+    border-left-color: #f6c23e;
+}
+
+.alert-info {
+    border-left-color: #36b9cc;
+}
+
+/* Footer */
+footer {
+    border-top: 1px solid #e3e6f0;
+}
+
+/* Dashboard stats cards */
+.card .card-text {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .card .card-text {
+        font-size: 1.5rem;
+    }
+}
+
+/* Feed detail page */
+.accordion-button:not(.collapsed) {
+    background-color: #eaecf4;
+    color: #4e73df;
+}

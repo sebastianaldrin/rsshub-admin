@@ -1,0 +1,346 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ feed.name }} - RSSHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>{{ feed.name }}</h1>
+        <p class="text-muted">
+            {{ feed.description }}
+            {% if not feed.is_active %}
+            <span class="badge bg-secondary ms-2">Inactive</span>
+            {% endif %}
+        </p>
+    </div>
+    <div class="col-auto">
+        <div class="btn-group">
+            <form method="post" action="{{ url_for('check_feed', feed_id=feed.id) }}">
+                <button type="submit" class="btn btn-primary me-2">
+                    Check Now
+                </button>
+            </form>
+            <a href="{{ url_for('edit_feed', feed_id=feed.id) }}" class="btn btn-outline-primary me-2">
+                Edit
+            </a>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Feed Info Card -->
+<div class="row mb-4">
+    <div class="col-lg-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Feed Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Category:</strong> {{ feed.category or 'Uncategorized' }}
+                </div>
+                <div class="mb-3">
+                    <strong>RSSHub Route:</strong>
+                    <code>{{ feed.rsshub_route }}</code>
+                </div>
+                {% if feed.original_url %}
+                <div class="mb-3">
+                    <strong>Original Website:</strong>
+                    <a href="{{ feed.original_url }}" target="_blank">{{ feed.original_url }}</a>
+                </div>
+                {% endif %}
+                <div class="mb-3">
+                    <strong>Check Frequency:</strong> {{ feed.check_frequency }} minutes
+                </div>
+                <div class="mb-3">
+                    <strong>Created:</strong> {{ feed.created_at.strftime('%Y-%m-%d %H:%M') }}
+                </div>
+                <div>
+                    <strong>Last Updated:</strong> {{ feed.updated_at.strftime('%Y-%m-%d %H:%M') }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Metrics Card -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Health Metrics</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <h6>Success Rate</h6>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar bg-success" 
+                                 role="progressbar" 
+                                 style="width: {{ health.success_rate * 100 }}%;" 
+                                 aria-valuenow="{{ health.success_rate * 100 }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                {{ (health.success_rate * 100)|int }}%
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <h6>Average Quality</h6>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar {% if health.avg_quality >= 80 %}bg-success{% elif health.avg_quality >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                 role="progressbar" 
+                                 style="width: {{ health.avg_quality }}%;" 
+                                 aria-valuenow="{{ health.avg_quality }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                {{ health.avg_quality|int }}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6>Average Items</h6>
+                        <p class="h4">{{ health.avg_items|int }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Total Checks</h6>
+                        <p class="h4">{{ health.total_checks }}</p>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <canvas id="qualityChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Latest Feed Content -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Latest Feed Content</h5>
+                <span class="badge bg-primary">{{ items|length }} items</span>
+            </div>
+            <div class="card-body p-0">
+                {% if items %}
+                <div class="accordion" id="itemsAccordion">
+                    {% for item in items %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading{{ item.id }}">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ item.id }}">
+                                {{ item.title }}
+                                {% if item.quality_issues %}
+                                <span class="badge bg-warning text-dark ms-2">
+                                    Issues: {{ item.quality_issues|replace('[', '')|replace(']', '')|replace('"', '')|replace(',', ', ') }}
+                                </span>
+                                {% endif %}
+                            </button>
+                        </h2>
+                        <div id="collapse{{ item.id }}" class="accordion-collapse collapse" data-bs-parent="#itemsAccordion">
+                            <div class="accordion-body">
+                                {% if item.image_url %}
+                                <img src="{{ item.image_url }}" alt="{{ item.title }}" class="img-fluid mb-3" style="max-height: 200px;">
+                                {% endif %}
+                                
+                                <div class="mb-3">
+                                    <a href="{{ item.link }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        View Original
+                                    </a>
+                                    {% if item.published_at %}
+                                    <span class="text-muted ms-2">
+                                        Published: {{ item.published_at.strftime('%Y-%m-%d %H:%M') }}
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                
+                                {% if item.content %}
+                                <div class="content-preview border p-3 mb-3 rounded">
+                                    {{ item.content|safe }}
+                                </div>
+                                {% elif item.description %}
+                                <div class="content-preview border p-3 mb-3 rounded">
+                                    {{ item.description|safe }}
+                                </div>
+                                {% endif %}
+                                
+                                <div class="mt-3">
+                                    <strong>Word Count:</strong> {{ item.word_count or 'N/A' }}
+                                    <br>
+                                    <strong>Full Content:</strong> {{ 'Yes' if item.has_full_content else 'No' }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center p-5">
+                    <p class="text-muted mb-0">No items available</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fetch Logs -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Fetch History</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Items</th>
+                        <th>Quality</th>
+                        <th>Avg. Content</th>
+                        <th>Images</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>{{ log.fetched_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            {% if log.status == 'success' %}
+                            <span class="badge bg-success">Success</span>
+                            {% elif log.status == 'error' %}
+                            <span class="badge bg-danger">Error</span>
+                            <span class="d-block small text-muted mt-1" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                                {{ log.error_message }}
+                            </span>
+                            {% elif log.status == 'warning' %}
+                            <span class="badge bg-warning text-dark">Warning</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.item_count }}</td>
+                        <td>
+                            {% if log.quality_score %}
+                            <div class="progress" style="height: 15px;">
+                                <div class="progress-bar {% if log.quality_score >= 80 %}bg-success{% elif log.quality_score >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ log.quality_score }}%;" 
+                                     aria-valuenow="{{ log.quality_score }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    {{ log.quality_score|int }}%
+                                </div>
+                            </div>
+                            {% else %}
+                            <span class="text-muted">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.avg_content_length|int if log.avg_content_length else 'N/A' }} chars</td>
+                        <td>{{ log.images_count if log.images_count is not none else 'N/A' }}</td>
+                        <td>{{ '%.2f'|format(log.fetch_duration) if log.fetch_duration else 'N/A' }}s</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the feed <strong>{{ feed.name }}</strong>?</p>
+                <p class="text-danger">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{{ url_for('delete_feed', feed_id=feed.id) }}" method="post">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Fetch quality data for the chart
+        fetch('/api/feed/stats/{{ feed.id }}')
+            .then(response => response.json())
+            .then(data => {
+                var ctx = document.getElementById('qualityChart').getContext('2d');
+                var chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates,
+                        datasets: [
+                            {
+                                label: 'Quality Score',
+                                data: data.quality_scores,
+                                borderColor: '#4e73df',
+                                backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.3
+                            },
+                            {
+                                label: 'Item Count',
+                                data: data.item_counts,
+                                borderColor: '#1cc88a',
+                                backgroundColor: 'rgba(28, 200, 138, 0.1)',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.3,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                title: {
+                                    display: true,
+                                    text: 'Quality Score'
+                                }
+                            },
+                            y1: {
+                                beginAtZero: true,
+                                position: 'right',
+                                grid: {
+                                    drawOnChartArea: false
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Item Count'
+                                }
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Feed Quality Trends'
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(error => console.error('Error loading chart data:', error));
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+rsshub_admin/
+├── app.py              # Main Flask application
+├── config.py           # Configuration settings
+├── models.py           # Database models
+├── utils.py            # Utility functions for RSS parsing, etc.
+├── static/             # Static assets
+│   ├── css/
+│   │   ├── main.css    # Main stylesheet
+│   │   └── bootstrap.min.css
+│   └── js/
+│       ├── main.js     # Main JavaScript file
+│       └── chart.min.js # For displaying metrics
+├── templates/          # Jinja2 templates
+│   ├── base.html       # Base template
+│   ├── dashboard.html  # Main dashboard
+│   ├── feed_detail.html # Feed inspector
+│   ├── add_feed.html   # Add/edit feed form
+│   └── settings.html   # System settings
+└── instance/           # Instance-specific files
+    └── app.db          # SQLite database

@@ -1,0 +1,285 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ 'Edit' if mode == 'edit' else 'Add' }} Feed - RSSHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>{{ 'Edit' if mode == 'edit' else 'Add New' }} Feed</h1>
+        <p class="text-muted">{{ 'Update feed settings' if mode == 'edit' else 'Configure a new RSSHub feed' }}</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="post" action="{{ url_for('edit_feed', feed_id=feed.id) if mode == 'edit' else url_for('add_feed') }}">
+                    {{ form.csrf_token }}
+                    
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Feed Name <span class="text-danger">*</span></label>
+                        {{ form.name(class="form-control", placeholder="Give this feed a descriptive name") }}
+                        {% if form.name.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.name.errors %}
+                            <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        {{ form.description(class="form-control", rows=2, placeholder="Optional description of this feed") }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Category</label>
+                        {{ form.category(class="form-control", placeholder="e.g., News, Technology, Sports") }}
+                        <div class="form-text">Group similar feeds together with categories</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="rsshub_route" class="form-label">RSSHub Route <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text" id="rsshub-base-url">{{ config['RSSHUB_BASE_URL'] }}/</span>
+                            {{ form.rsshub_route(class="form-control", placeholder="e.g., nytimes/homepage", aria_describedby="rsshub-base-url") }}
+                        </div>
+                        {% if form.rsshub_route.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.rsshub_route.errors %}
+                            <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="form-text">
+                            The route part of the RSSHub URL (without the base URL)
+                            <a href="https://docs.rsshub.app/" target="_blank">
+                                See RSSHub documentation
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="original_url" class="form-label">Original Website URL</label>
+                        {{ form.original_url(class="form-control", placeholder="https://example.com") }}
+                        {% if form.original_url.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.original_url.errors %}
+                            <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="form-text">The URL of the original website being scraped</div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                {{ form.is_active(class="form-check-input") }}
+                                <label class="form-check-label" for="is_active">Active</label>
+                                <div class="form-text">Enable/disable feed checks</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                {{ form.requires_javascript(class="form-check-input") }}
+                                <label class="form-check-label" for="requires_javascript">Requires JavaScript</label>
+                                <div class="form-text">Site needs JS rendering</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="check_frequency" class="form-label">Check Frequency (minutes)</label>
+                            {{ form.check_frequency(class="form-control") }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="custom_selectors" class="form-label">Custom Selectors</label>
+                        {{ form.custom_selectors(class="form-control", rows=4, placeholder='{"title": ".article-title", "link": "a.article-link@href"}') }}
+                        <div class="form-text">
+                            Optional JSON object with custom CSS selectors. Used when creating custom routes.
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('feed_list') }}" class="btn btn-outline-secondary">Cancel</a>
+                        <div>
+                            <button type="button" id="testRouteBtn" class="btn btn-outline-primary me-2">Test Route</button>
+                            <button type="submit" class="btn btn-primary">{{ 'Update' if mode == 'edit' else 'Add' }} Feed</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Feed Preview</h5>
+            </div>
+            <div class="card-body">
+                <div id="feedPreview">
+                    <div class="text-center text-muted py-5">
+                        <p>Click "Test Route" to preview feed content</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">RSSHub Help</h5>
+            </div>
+            <div class="card-body">
+                <h6>Common Route Formats:</h6>
+                <ul>
+                    <li><code>news/site/category</code></li>
+                    <li><code>reddit/r/subreddit</code></li>
+                    <li><code>twitter/user/username</code></li>
+                </ul>
+                
+                <h6>Parameters:</h6>
+                <p>Parameters are added with a question mark:</p>
+                <code>zhihu/people/activities/username?limit=5</code>
+                
+                <h6>Examples:</h6>
+                <ul>
+                    <li><code>nytimes/homepage</code></li>
+                    <li><code>reddit/user/spez/submitted</code></li>
+                    <li><code>bilibili/user/dynamic/123456</code></li>
+                </ul>
+                
+                <p><a href="https://docs.rsshub.app/" target="_blank" class="btn btn-sm btn-outline-primary mt-2">Full Documentation</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const testRouteBtn = document.getElementById('testRouteBtn');
+        const feedPreview = document.getElementById('feedPreview');
+        const routeInput = document.getElementById('rsshub_route');
+        
+        testRouteBtn.addEventListener('click', function() {
+            const route = routeInput.value.trim();
+            
+            if (!route) {
+                feedPreview.innerHTML = `
+                    <div class="alert alert-warning">
+                        Please enter a RSSHub route to test.
+                    </div>
+                `;
+                return;
+            }
+            
+            // Show loading state
+            feedPreview.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Fetching preview...</p>
+                </div>
+            `;
+            
+            // Validate route
+            fetch('/api/feed/validate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ route: route })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.valid) {
+                    feedPreview.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h5>Invalid Route</h5>
+                            <p>${data.message}</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Get preview items
+                return fetch('/api/feed/preview', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ route: route })
+                });
+            })
+            .then(response => {
+                if (!response) return null;
+                return response.json();
+            })
+            .then(data => {
+                if (!data) return;
+                
+                if (data.error) {
+                    feedPreview.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h5>Error</h5>
+                            <p>${data.error}</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                if (!data.items || data.items.length === 0) {
+                    feedPreview.innerHTML = `
+                        <div class="alert alert-warning">
+                            <h5>No Items</h5>
+                            <p>The feed is valid but contains no items.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Render preview items
+                let html = `<h6 class="mb-3">Found ${data.items.length} items</h6>`;
+                
+                data.items.forEach(item => {
+                    html += `
+                        <div class="card mb-3">
+                            <div class="card-body p-3">
+                                <h6 class="card-title">${item.title}</h6>
+                                <div class="d-flex mb-2">
+                                    <a href="${item.link}" target="_blank" class="btn btn-sm btn-outline-primary me-2">View Original</a>
+                                    <small class="text-muted">${item.published || ''}</small>
+                                </div>
+                                
+                                ${item.image_url ? `<img src="${item.image_url}" class="img-fluid mb-2" style="max-height: 150px;">` : ''}
+                                
+                                <div class="content-preview small" style="max-height: 150px; overflow-y: auto;">
+                                    ${item.content || item.description || '<span class="text-muted">No content</span>'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                feedPreview.innerHTML = html;
+            })
+            .catch(error => {
+                feedPreview.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5>Error</h5>
+                        <p>Failed to fetch preview: ${error.message}</p>
+                    </div>
+                `;
+            });
+        });
+    });
+</script>
+{% endblock %}

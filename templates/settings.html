@@ -1,0 +1,407 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings - RSSHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>System Settings</h1>
+        <p class="text-muted">Configure RSSHub Admin system settings</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">General Settings</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('settings') }}">
+                    {{ form.csrf_token }}
+                    
+                    <div class="mb-3">
+                        <label for="rsshub_base_url" class="form-label">RSSHub Base URL <span class="text-danger">*</span></label>
+                        {{ form.rsshub_base_url(class="form-control", placeholder="http://localhost:1200") }}
+                        {% if form.rsshub_base_url.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.rsshub_base_url.errors %}
+                            <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="form-text">
+                            The base URL where your RSSHub instance is running
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="check_interval" class="form-label">Default Check Interval (minutes) <span class="text-danger">*</span></label>
+                        {{ form.check_interval(class="form-control") }}
+                        {% if form.check_interval.errors %}
+                        <div class="invalid-feedback d-block">
+                            {% for error in form.check_interval.errors %}
+                            <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="form-text">
+                            How often the system should check all feeds by default
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">System Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>RSSHub Connection</h6>
+                        <div id="rsshub-status">
+                            <div class="d-flex align-items-center">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                    <span class="visually-hidden">Checking...</span>
+                                </div>
+                                <span>Checking connection...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Scheduler Status</h6>
+                        <div id="scheduler-status">
+                            <div class="d-flex align-items-center">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                    <span class="visually-hidden">Checking...</span>
+                                </div>
+                                <span>Checking scheduler...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6>Database Stats</h6>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Total Feeds
+                                <span class="badge bg-primary rounded-pill" id="total-feeds">Loading...</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Feed Items
+                                <span class="badge bg-primary rounded-pill" id="total-items">Loading...</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Fetch Logs
+                                <span class="badge bg-primary rounded-pill" id="total-logs">Loading...</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>System Actions</h6>
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-outline-primary" id="check-all-feeds">
+                                Check All Feeds Now
+                            </button>
+                            <button type="button" class="btn btn-outline-warning" id="restart-scheduler">
+                                Restart Scheduler
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">About RSSHub Admin</h5>
+            </div>
+            <div class="card-body">
+                <h6>RSSHub Admin & Quality Control System</h6>
+                <p>
+                    A management interface for RSSHub, allowing you to monitor and ensure the quality of your RSS feeds.
+                </p>
+                
+                <h6 class="mt-3">Features:</h6>
+                <ul>
+                    <li>Monitor feed health and quality</li>
+                    <li>Test and preview feeds</li>
+                    <li>Scheduled feed checking</li>
+                    <li>Quality metrics and scoring</li>
+                    <li>Alert system for feed issues</li>
+                </ul>
+                
+                <h6 class="mt-3">Resources:</h6>
+                <ul>
+                    <li><a href="https://docs.rsshub.app/" target="_blank">RSSHub Documentation</a></li>
+                    <li><a href="https://github.com/DIYgod/RSSHub" target="_blank">RSSHub GitHub</a></li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">RSSHub Status</h5>
+            </div>
+            <div class="card-body">
+                <div id="rsshub-routes-status">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span>Loading routes information...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check RSSHub connection
+        checkRSSHubConnection();
+        
+        // Load database stats
+        loadDatabaseStats();
+        
+        // Set up button actions
+        document.getElementById('check-all-feeds').addEventListener('click', function() {
+            checkAllFeeds();
+        });
+        
+        document.getElementById('restart-scheduler').addEventListener('click', function() {
+            restartScheduler();
+        });
+    });
+    
+    function checkRSSHubConnection() {
+        const rsshubBaseUrl = document.getElementById('rsshub_base_url').value;
+        const statusElement = document.getElementById('rsshub-status');
+        const routesStatusElement = document.getElementById('rsshub-routes-status');
+        
+        fetch(rsshubBaseUrl)
+            .then(response => {
+                if (response.ok) {
+                    statusElement.innerHTML = `
+                        <div class="alert alert-success mb-0">
+                            <div class="d-flex align-items-center">
+                                <div class="me-2">✅</div>
+                                <div>
+                                    <strong>Connected to RSSHub</strong><br>
+                                    <small>${rsshubBaseUrl}</small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Try to get routes info
+                    return fetch(rsshubBaseUrl + '/api/routes');
+                } else {
+                    throw new Error(`Status: ${response.status}`);
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                const routeCount = Object.keys(data).length;
+                
+                routesStatusElement.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <div class="d-flex align-items-center">
+                            <div class="me-2">✅</div>
+                            <div>
+                                <strong>RSSHub has ${routeCount} routes available</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <a href="${rsshubBaseUrl}/" target="_blank" class="btn btn-sm btn-outline-primary">View RSSHub</a>
+                    </div>
+                `;
+            })
+            .catch(error => {
+                statusElement.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <div class="d-flex align-items-center">
+                            <div class="me-2">❌</div>
+                            <div>
+                                <strong>Cannot connect to RSSHub</strong><br>
+                                <small>Error: ${error.message}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                routesStatusElement.innerHTML = `
+                    <div class="alert alert-warning mb-0">
+                        <div class="d-flex align-items-center">
+                            <div class="me-2">⚠️</div>
+                            <div>
+                                <strong>Cannot get routes information</strong><br>
+                                <small>Make sure RSSHub is running</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+        // Check scheduler status
+        const schedulerStatusElement = document.getElementById('scheduler-status');
+        
+        fetch('/api/scheduler/status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.running) {
+                    schedulerStatusElement.innerHTML = `
+                        <div class="alert alert-success mb-0">
+                            <div class="d-flex align-items-center">
+                                <div class="me-2">✅</div>
+                                <div>
+                                    <strong>Scheduler is running</strong><br>
+                                    <small>Next run: ${data.next_run}</small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    schedulerStatusElement.innerHTML = `
+                        <div class="alert alert-warning mb-0">
+                            <div class="d-flex align-items-center">
+                                <div class="me-2">⚠️</div>
+                                <div>
+                                    <strong>Scheduler is not running</strong><br>
+                                    <small>Click "Restart Scheduler" to start it</small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                schedulerStatusElement.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <div class="d-flex align-items-center">
+                            <div class="me-2">❌</div>
+                            <div>
+                                <strong>Cannot check scheduler status</strong><br>
+                                <small>Error: ${error.message}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+    }
+    
+    function loadDatabaseStats() {
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('total-feeds').textContent = data.total_feeds;
+                document.getElementById('total-items').textContent = data.total_items;
+                document.getElementById('total-logs').textContent = data.total_logs;
+            })
+            .catch(error => {
+                console.error('Error loading stats:', error);
+            });
+    }
+    
+    function checkAllFeeds() {
+        const button = document.getElementById('check-all-feeds');
+        button.disabled = true;
+        button.innerHTML = `
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Checking all feeds...
+        `;
+        
+        fetch('/api/feed/check-all', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(`Started checking ${data.count} feeds`, 'success');
+                } else {
+                    showAlert('Failed to start feed check', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error checking feeds', 'danger');
+            })
+            .finally(() => {
+                setTimeout(() => {
+                    button.disabled = false;
+                    button.textContent = 'Check All Feeds Now';
+                }, 3000);
+            });
+    }
+    
+    function restartScheduler() {
+        const button = document.getElementById('restart-scheduler');
+        button.disabled = true;
+        button.innerHTML = `
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Restarting...
+        `;
+        
+        fetch('/api/scheduler/restart', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('Scheduler restarted successfully', 'success');
+                    // Reload scheduler status
+                    setTimeout(() => {
+                        checkRSSHubConnection();
+                    }, 1000);
+                } else {
+                    showAlert('Failed to restart scheduler', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert('Error restarting scheduler', 'danger');
+            })
+            .finally(() => {
+                setTimeout(() => {
+                    button.disabled = false;
+                    button.textContent = 'Restart Scheduler';
+                }, 3000);
+            });
+    }
+    
+    // Utility function to show alerts
+    function showAlert(message, type = 'info') {
+        const alertContainer = document.createElement('div');
+        alertContainer.className = `alert alert-${type} alert-dismissible fade show`;
+        alertContainer.setAttribute('role', 'alert');
+        
+        alertContainer.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // Insert at the top of the main container
+        const container = document.querySelector('.container');
+        container.insertBefore(alertContainer, container.firstChild);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            const bsAlert = new bootstrap.Alert(alertContainer);
+            bsAlert.close();
+        }, 5000);
+    }
+</script>
+{% endblock %}

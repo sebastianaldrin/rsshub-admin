@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+
+{% block title %}Alerts - RSSHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>System Alerts</h1>
+        <p class="text-muted">View and manage alerts about feed issues</p>
+    </div>
+    <div class="col-auto">
+        <form method="post" action="{{ url_for('mark_all_alerts_read') }}">
+            <button type="submit" class="btn btn-outline-primary">
+                Mark All as Read
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">All Alerts</h5>
+        <div>
+            <span class="badge bg-danger">
+                {{ alerts|selectattr('is_read', 'equalto', false)|list|length }} Unread
+            </span>
+            <span class="badge bg-secondary ms-2">
+                {{ alerts|length }} Total
+            </span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if alerts %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 10%">Level</th>
+                        <th style="width: 20%">Date</th>
+                        <th style="width: 15%">Feed</th>
+                        <th style="width: 45%">Message</th>
+                        <th style="width: 10%">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for alert in alerts %}
+                    <tr {% if not alert.is_read %}class="table-warning"{% endif %}>
+                        <td>
+                            {% if alert.level == 'error' %}
+                            <span class="badge bg-danger">Error</span>
+                            {% elif alert.level == 'warning' %}
+                            <span class="badge bg-warning text-dark">Warning</span>
+                            {% else %}
+                            <span class="badge bg-info">Info</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ alert.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            {% if alert.feed_source_id %}
+                            <a href="{{ url_for('feed_detail', feed_id=alert.feed_source_id) }}">
+                                {{ alert.feed_source.name if alert.feed_source else 'Unknown Feed' }}
+                            </a>
+                            {% else %}
+                            <span class="text-muted">System</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ alert.message }}</td>
+                        <td>
+                            {% if not alert.is_read %}
+                            <form method="post" action="{{ url_for('mark_alert_read', alert_id=alert.id) }}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    Mark Read
+                                </button>
+                            </form>
+                            {% else %}
+                            <span class="badge bg-secondary">Read</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center p-5">
+            <p class="text-muted mb-0">No alerts found</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Alert Levels Guide -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0">Understanding Alert Levels</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card h-100 border-info">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0">Info Alerts</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Informational messages about system events and non-critical updates.</p>
+                        <p class="card-text text-muted">Example: Feed check completed, New feed added</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100 border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0">Warning Alerts</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Potential issues that don't prevent operation but may need attention.</p>
+                        <p class="card-text text-muted">Example: Low quality feed, Empty feed results</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100 border-danger">
+                    <div class="card-header bg-danger text-white">
+                        <h6 class="mb-0">Error Alerts</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Critical issues that prevent proper operation and require immediate attention.</p>
+                        <p class="card-text text-muted">Example: Cannot fetch feed, Invalid RSS format</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
