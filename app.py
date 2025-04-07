@@ -201,13 +201,12 @@ def api_feed_extraction_stats(feed_id):
         full_content_count = 0
         word_counts = []
         
-        # Process each item
         for item in items:
             # Extract metadata if available
             metadata = {}
-            if item.metadata:
+            if item.extraction_metadata:
                 try:
-                    metadata = json.loads(item.metadata)
+                    metadata = json.loads(item.extraction_metadata)
                 except json.JSONDecodeError:
                     pass
             

@@ -218,7 +218,7 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                     has_full_content=has_full_content,
                     word_count=word_count,
                     quality_issues=json.dumps(quality_issues) if quality_issues else None,
-                    metadata=json.dumps({
+                    extraction_metadata=json.dumps({
                         "extraction_method": extraction_method,
                         "content_length": len(text_content) if text_content else 0
                     })
