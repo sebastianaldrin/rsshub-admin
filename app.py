@@ -11,7 +11,7 @@ import logging
 from models import db, FeedSource, FetchLog, FeedItem, Alert, SystemSettings
 from utils import (
     fetch_and_parse_feed, validate_rsshub_route, check_all_feeds,
-    get_feed_health, get_feed_preview
+    get_feed_health, get_feed_preview, suggest_selectors
 )
 
 # Create Flask app
