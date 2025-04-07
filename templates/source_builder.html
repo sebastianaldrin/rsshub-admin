@@ -221,7 +221,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Site type field mapping
-        const siteTypeFields = {
+        const siteTypeFieldsMapping = {
             'reddit': `
                 <div class="mb-3">
                     <label for="redditSubreddit" class="form-label">Subreddit</label>
@@ -306,7 +306,7 @@
         };
         
         // Help content for each site type
-        const siteTypeHelp = {
+        const siteTypeHelpMapping = {
             'reddit': `
                 <h6>Reddit Feed Help</h6>
                 <p>Create RSS feeds from any subreddit.</p>
@@ -361,8 +361,8 @@
         
         // Elements
         const siteTypeSelect = document.getElementById('siteType');
-        const siteTypeFields = document.getElementById('siteTypeFields');
-        const siteTypeHelp = document.getElementById('siteTypeHelp');
+        const siteTypeFieldsContainer = document.getElementById('siteTypeFields');
+        const siteTypeHelpContainer = document.getElementById('siteTypeHelp');
         const generatedRoute = document.getElementById('generatedRoute');
         const generatedSelectors = document.getElementById('generatedSelectors');
         const testSourceBtn = document.getElementById('testSourceBtn');
@@ -411,23 +411,23 @@
         function updateSiteTypeFields() {
             const siteType = siteTypeSelect.value;
             
-            if (siteType && siteTypeFields[siteType]) {
-                siteTypeFields.innerHTML = siteTypeFields[siteType];
+            if (siteType && siteTypeFieldsMapping[siteType]) {
+                siteTypeFieldsContainer.innerHTML = siteTypeFieldsMapping[siteType];
                 
                 // Add change listeners to new fields
-                siteTypeFields.querySelectorAll('input, select').forEach(input => {
+                siteTypeFieldsContainer.querySelectorAll('input, select').forEach(input => {
                     input.addEventListener('change', updateRoutePreview);
                     input.addEventListener('input', updateRoutePreview);
                 });
             } else {
-                siteTypeFields.innerHTML = '<p class="text-muted">Select a site type to see options</p>';
+                siteTypeFieldsContainer.innerHTML = '<p class="text-muted">Select a site type to see options</p>';
             }
             
             // Update help content
-            if (siteType && siteTypeHelp[siteType]) {
-                siteTypeHelp.innerHTML = siteTypeHelp[siteType];
+            if (siteType && siteTypeHelpMapping[siteType]) {
+                siteTypeHelpContainer.innerHTML = siteTypeHelpMapping[siteType];
             } else {
-                siteTypeHelp.innerHTML = `
+                siteTypeHelpContainer.innerHTML = `
                     <h6>Getting Started</h6>
                     <ul>
                         <li>Select a site type from the dropdown</li>
@@ -731,7 +731,6 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                 },
                 body: JSON.stringify(feedData)
             })
@@ -766,7 +765,7 @@
             document.getElementById('jsRequired').checked = false;
             
             siteTypeSelect.value = '';
-            siteTypeFields.innerHTML = '<p class="text-muted">Select a site type to see options</p>';
+            siteTypeFieldsContainer.innerHTML = '<p class="text-muted">Select a site type to see options</p>';
             
             document.getElementById('customRoute').value = '';
             
@@ -850,6 +849,9 @@
                 dateSelector.placeholder = 'time.published';
             });
         }
+        
+        // Initialize
+        updateSiteTypeFields();
     });
 </script>
 {% endblock %}
