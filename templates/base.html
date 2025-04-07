@@ -26,6 +26,9 @@
                         <a class="nav-link {% if request.endpoint == 'feed_list' %}active{% endif %}" href="{{ url_for('feed_list') }}">Feeds</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'source_builder' %}active{% endif %}" href="{{ url_for('source_builder') }}">Source Builder</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'add_feed' %}active{% endif %}" href="{{ url_for('add_feed') }}">Add Feed</a>
                     </li>
                     <li class="nav-item">
