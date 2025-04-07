@@ -43,72 +43,104 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                 return 'error', 'Custom selectors are required for custom routes', None, 0
             
             # Fetch the page
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=30, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            })
             response.raise_for_status()
             
             # Parse the page
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Extract title
-            title = "Untitled"
-            if 'title' in custom_selectors and custom_selectors['title']:
-                title_element = soup.select_one(custom_selectors['title'])
-                if title_element:
-                    title = title_element.get_text(strip=True)
+            # First determine if this is likely an article page or a listing/homepage
+            is_article = is_article_page(soup, url)
             
-            # Extract content
-            content = ""
-            if 'content' in custom_selectors and custom_selectors['content']:
-                content_element = soup.select_one(custom_selectors['content'])
-                if content_element:
-                    content = str(content_element)
-                    
-            # Extract date
-            published_at = datetime.utcnow()
-            if 'date' in custom_selectors and custom_selectors['date']:
-                date_element = soup.select_one(custom_selectors['date'])
-                if date_element and date_element.get('datetime'):
+            # Process based on page type
+            feed_items = []
+            
+            if is_article:
+                # This is a single article page
+                item = extract_article_content(soup, url, custom_selectors)
+                if item:
+                    feed_items = [item]
+            else:
+                # This is a listing/homepage - find and process article links
+                article_urls = find_article_links(soup, url, custom_selectors)
+                
+                # Process each article
+                for article_url in article_urls[:10]:  # Limit to 10 articles for performance
                     try:
-                        published_at = datetime.fromisoformat(date_element['datetime'].replace('Z', '+00:00'))
-                    except:
-                        published_at = datetime.utcnow()
+                        # Fetch the article page
+                        article_response = requests.get(article_url, timeout=30, headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        })
+                        article_response.raise_for_status()
+                        
+                        # Parse the article
+                        article_soup = BeautifulSoup(article_response.content, 'html.parser')
+                        
+                        # Extract article content
+                        item = extract_article_content(article_soup, article_url, custom_selectors)
+                        if item:
+                            feed_items.append(item)
+                    except Exception as e:
+                        current_app.logger.error(f"Error processing article {article_url}: {str(e)}")
+                        continue
+            
+            # If no items could be extracted, return an error
+            if not feed_items:
+                return 'error', 'No items could be extracted from the website', None, 0
             
             if save_items:
-                # Clear existing items
+                # Clear existing items for this source
                 FeedItem.query.filter_by(feed_source_id=feed_source.id).delete()
                 
-                # Create feed item
-                item = FeedItem(
-                    feed_source_id=feed_source.id,
-                    title=title,
-                    link=url,
-                    guid=url,
-                    content=content,
-                    published_at=published_at,
-                    has_full_content=True if content else False,
-                    word_count=len(content.split()) if content else 0,
-                    extraction_metadata=json.dumps({
-                        "extraction_method": "custom_selectors",
-                        "content_length": len(content) if content else 0
-                    })
-                )
+                # Add new items to the database
+                for item in feed_items:
+                    feed_item = FeedItem(
+                        feed_source_id=feed_source.id,
+                        title=item['title'],
+                        link=item['link'],
+                        guid=item['guid'],
+                        description=item.get('description', ''),
+                        content=item['content'],
+                        author=item.get('author'),
+                        image_url=item.get('image_url'),
+                        published_at=item.get('published_at', datetime.utcnow()),
+                        has_full_content=item.get('has_full_content', False),
+                        word_count=item.get('word_count', 0),
+                        quality_issues=item.get('quality_issues'),
+                        extraction_metadata=item.get('extraction_metadata')
+                    )
+                    db.session.add(feed_item)
                 
-                # Add new item
-                db.session.add(item)
                 db.session.commit()
             
+            # Calculate quality metrics
+            avg_content_length = sum(len(item['content']) for item in feed_items) / len(feed_items) if feed_items else 0
+            image_count = sum(1 for item in feed_items if item.get('image_url')) or 0
+            
+            # Calculate quality score
+            quality_score = calculate_quality_score(
+                item_count=len(feed_items),
+                avg_content_length=avg_content_length,
+                image_ratio=image_count / len(feed_items) if feed_items else 0
+            )
+            
             # Create fetch log
+            fetch_duration = time.time() - start_time
             fetch_log = FetchLog(
                 feed_source_id=feed_source.id,
                 status='success',
-                item_count=1,
-                quality_score=70,  # Arbitrary score for custom routes
-                fetch_duration=time.time() - start_time
+                item_count=len(feed_items),
+                avg_content_length=avg_content_length,
+                images_count=image_count,
+                quality_score=quality_score,
+                fetch_duration=fetch_duration
             )
             db.session.add(fetch_log)
             db.session.commit()
             
-            return 'success', 'Custom route processed successfully', None, 1
+            return 'success', f'Successfully extracted {len(feed_items)} articles from the website', None, len(feed_items)
             
         except Exception as e:
             error_msg = str(e)
@@ -396,6 +428,367 @@ def fetch_and_parse_feed(feed_source, save_items=True):
         
         db.session.commit()
         return 'error', error_msg, None, 0
+
+
+def is_article_page(soup, url):
+    """
+    Determine if a page is likely an article page or a listing/homepage.
+    
+    Args:
+        soup: BeautifulSoup object
+        url: URL of the page
+        
+    Returns:
+        bool: True if it's likely an article page, False if it's likely a listing/homepage
+    """
+    # Check URL patterns common for articles
+    url_indicators = ['article', 'story', 'news', 'post', 'read', '/a/', '/s/']
+    if any(indicator in url.lower() for indicator in url_indicators):
+        return True
+    
+    # Check for article elements
+    article_indicators = [
+        soup.find('article'),
+        soup.find(class_=re.compile(r'article|story|post')),
+        soup.find(id=re.compile(r'article|story|post')),
+        soup.find(attrs={"itemprop": "articleBody"}),
+        soup.find(attrs={"property": "articleBody"}),
+        soup.find('meta', property="og:type", content="article")
+    ]
+    
+    if any(indicator for indicator in article_indicators):
+        return True
+        
+    # Check if there's a single prominent h1
+    h1_tags = soup.find_all('h1')
+    if len(h1_tags) == 1 and len(h1_tags[0].get_text(strip=True)) > 20:
+        return True
+        
+    # Count links - homepages tend to have many more links
+    links = soup.find_all('a', href=True)
+    if len(links) < 20:  # Fewer links suggest an article
+        return True
+        
+    # Default to homepage/listing
+    return False
+
+
+def find_article_links(soup, base_url, selectors):
+    """
+    Find article links on a homepage or listing page.
+    
+    Args:
+        soup: BeautifulSoup object
+        base_url: Base URL for resolving relative links
+        selectors: Dictionary of custom selectors
+        
+    Returns:
+        list: List of article URLs
+    """
+    article_urls = []
+    
+    # Try to use custom link selector if provided
+    if selectors and 'link' in selectors and selectors['link']:
+        link_elements = soup.select(selectors['link'])
+        for element in link_elements:
+            # If the element is already an <a> tag
+            if element.name == 'a' and element.has_attr('href'):
+                article_urls.append(urljoin(base_url, element['href']))
+            else:
+                # Otherwise look for links inside the element
+                links = element.select('a[href]')
+                for link in links:
+                    article_urls.append(urljoin(base_url, link['href']))
+    
+    # If no links found or no custom selector, try common patterns
+    if not article_urls:
+        # Try common article container + link patterns
+        article_containers = [
+            # List items or cards
+            ('li.article', 'a'),
+            ('.article', 'a'),
+            ('.post', 'a'),
+            ('.card', 'a'),
+            ('.news-item', 'a'),
+            ('.story', 'a'),
+            ('.item', 'a'),
+            
+            # Heading links
+            ('h2', 'a'),
+            ('h3', 'a'),
+            ('.headline', 'a'),
+            ('.title', 'a'),
+            
+            # Direct link selectors
+            ('a.article-link', None),
+            ('a.headline', None),
+            ('a.title', None)
+        ]
+        
+        for container, link_selector in article_containers:
+            if link_selector:
+                # Two-level selection (container -> link)
+                containers = soup.select(container)
+                for item in containers:
+                    links = item.select(link_selector)
+                    for link in links:
+                        if link.has_attr('href'):
+                            article_urls.append(urljoin(base_url, link['href']))
+            else:
+                # Direct link selection
+                links = soup.select(container)
+                for link in links:
+                    if link.has_attr('href'):
+                        article_urls.append(urljoin(base_url, link['href']))
+    
+    # If still no links, try to find any promising links
+    if not article_urls:
+        # Look for links with article-like URL patterns
+        all_links = soup.find_all('a', href=True)
+        for link in all_links:
+            href = link['href']
+            # Skip navigation, social, and other non-article links
+            if any(x in href.lower() for x in ['javascript:', 'mailto:', '#', 'facebook', 'twitter', 'instagram']):
+                continue
+                
+            # Look for article-like URL patterns
+            if any(x in href.lower() for x in ['article', 'story', 'news', 'post', '/a/', '/s/']):
+                article_urls.append(urljoin(base_url, href))
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    article_urls = [x for x in article_urls if not (x in seen or seen.add(x))]
+    
+    return article_urls
+
+
+def extract_article_content(soup, url, selectors):
+    """
+    Extract content from an article page using custom selectors.
+    
+    Args:
+        soup: BeautifulSoup object
+        url: URL of the article
+        selectors: Dictionary of custom selectors
+        
+    Returns:
+        dict: Article data or None if extraction failed
+    """
+    try:
+        # Extract title
+        title = "Untitled"
+        if 'title' in selectors and selectors['title']:
+            title_element = soup.select_one(selectors['title'])
+            if title_element:
+                title = title_element.get_text(strip=True)
+        
+        # If no title found, try to use the page title
+        if not title or title == "Untitled":
+            if soup.title:
+                title = soup.title.string.strip()
+            else:
+                # Try common title patterns
+                for title_selector in ['h1', '.headline', '.article-title', '[itemprop="headline"]']:
+                    title_element = soup.select_one(title_selector)
+                    if title_element:
+                        title = title_element.get_text(strip=True)
+                        break
+        
+        # Extract content
+        content = ""
+        if 'content' in selectors and selectors['content']:
+            content_element = soup.select_one(selectors['content'])
+            if content_element:
+                # Preserve the HTML structure
+                content = str(content_element)
+                
+                # Count text for metrics
+                text_content = content_element.get_text(strip=True)
+                word_count = len(re.findall(r'\w+', text_content))
+                
+                # Check if content is too short
+                if len(text_content) < 50:
+                    current_app.logger.warning(f"Content too short for {url}: {len(text_content)} chars")
+        
+        # If no content found, try common content selectors
+        if not content:
+            for content_selector in ['article', '.article-body', '.post-content', '[itemprop="articleBody"]']:
+                content_element = soup.select_one(content_selector)
+                if content_element:
+                    content = str(content_element)
+                    text_content = content_element.get_text(strip=True)
+                    word_count = len(re.findall(r'\w+', text_content))
+                    break
+        
+        # If still no content, try paragraphs directly
+        if not content:
+            main_element = soup.find('main') or soup.find(id='content') or soup.find(class_='content') or soup.body
+            if main_element:
+                paragraphs = main_element.find_all('p')
+                if paragraphs:
+                    content = ''.join(str(p) for p in paragraphs[:15])  # Take first 15 paragraphs
+                    text_content = ' '.join(p.get_text(strip=True) for p in paragraphs[:15])
+                    word_count = len(re.findall(r'\w+', text_content))
+        
+        # If no content could be extracted, return None
+        if not content:
+            return None
+        
+        # Extract date
+        published_at = None
+        if 'date' in selectors and selectors['date']:
+            date_element = soup.select_one(selectors['date'])
+            if date_element:
+                # Try datetime attribute first
+                date_str = date_element.get('datetime')
+                if not date_str:
+                    date_str = date_element.get_text(strip=True)
+                
+                if date_str:
+                    published_at = parse_date(date_str)
+        
+        # If no date found with selector, try common patterns
+        if not published_at:
+            for date_selector in ['[itemprop="datePublished"]', 'time', '.date', '.published']:
+                date_element = soup.select_one(date_selector)
+                if date_element:
+                    # Try datetime attribute first
+                    date_str = date_element.get('datetime')
+                    if not date_str:
+                        date_str = date_element.get_text(strip=True)
+                    
+                    if date_str:
+                        published_at = parse_date(date_str)
+                        break
+        
+        # If still no date found, use current time
+        if not published_at:
+            published_at = datetime.utcnow()
+        
+        # Extract image
+        image_url = None
+        
+        # Try to find a featured image first
+        featured_image_selectors = ['.featured-image img', '.hero-image img', '[itemprop="image"]', '.article-image img']
+        for img_selector in featured_image_selectors:
+            img = soup.select_one(img_selector)
+            if img and img.has_attr('src'):
+                image_url = urljoin(url, img['src'])
+                break
+        
+        # If no featured image, look in the content
+        if not image_url and content:
+            content_soup = BeautifulSoup(content, 'html.parser')
+            img_tags = content_soup.find_all('img', src=True)
+            if img_tags:
+                # Get first image with reasonable size
+                for img in img_tags:
+                    if img.get('src'):
+                        image_url = urljoin(url, img['src'])
+                        break
+        
+        # Extract author
+        author = extract_author(soup)
+        
+        # Generate a unique identifier
+        guid = url
+        
+        # Create article data
+        article = {
+            'title': title,
+            'link': url,
+            'guid': guid,
+            'description': text_content[:200] + '...' if len(text_content) > 200 else text_content,
+            'content': content,
+            'author': author,
+            'image_url': image_url,
+            'published_at': published_at,
+            'has_full_content': True,
+            'word_count': word_count if 'word_count' in locals() else 0,
+            'quality_issues': json.dumps([]) if content and title else json.dumps(["incomplete_content"]),
+            'extraction_metadata': json.dumps({
+                'extraction_method': 'custom_selectors',
+                'content_length': len(content) if content else 0
+            })
+        }
+        
+        return article
+    
+    except Exception as e:
+        current_app.logger.error(f"Error extracting content from {url}: {str(e)}")
+        return None
+
+
+def extract_author(soup):
+    """Try to extract the author from common patterns."""
+    author_selectors = [
+        '[rel="author"]',
+        '[itemprop="author"]',
+        '.author',
+        '.byline',
+        'meta[name="author"]'
+    ]
+    
+    for selector in author_selectors:
+        author_element = soup.select_one(selector)
+        if author_element:
+            if author_element.name == 'meta' and author_element.get('content'):
+                return author_element['content']
+            return author_element.get_text(strip=True)
+    
+    return None
+
+
+def parse_date(date_str):
+    """
+    Try to parse a date string in various formats.
+    
+    Args:
+        date_str: Date string to parse
+        
+    Returns:
+        datetime or None
+    """
+    from datetime import datetime, timedelta
+    
+    # Common date formats
+    formats = [
+        '%Y-%m-%dT%H:%M:%S%z',  # ISO 8601 with timezone
+        '%Y-%m-%dT%H:%M:%S.%f%z',  # ISO 8601 with microseconds and timezone
+        '%Y-%m-%dT%H:%M:%S',  # ISO 8601 without timezone
+        '%Y-%m-%d %H:%M:%S',  # Standard datetime
+        '%Y-%m-%d',  # Just date
+        '%B %d, %Y',  # January 1, 2023
+        '%d %B %Y',  # 1 January 2023
+        '%m/%d/%Y',  # MM/DD/YYYY
+        '%d/%m/%Y',  # DD/MM/YYYY
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    
+    # Try more complex parsing for relative dates
+    try:
+        if 'ago' in date_str.lower():
+            # Handle "X time ago" format
+            value = int(re.search(r'\d+', date_str).group())
+            if 'minute' in date_str.lower():
+                return datetime.utcnow().replace(microsecond=0) - timedelta(minutes=value)
+            elif 'hour' in date_str.lower():
+                return datetime.utcnow().replace(microsecond=0) - timedelta(hours=value)
+            elif 'day' in date_str.lower():
+                return datetime.utcnow().replace(microsecond=0) - timedelta(days=value)
+            elif 'week' in date_str.lower():
+                return datetime.utcnow().replace(microsecond=0) - timedelta(weeks=value)
+            elif 'month' in date_str.lower():
+                return datetime.utcnow().replace(microsecond=0) - timedelta(days=value*30)
+    except:
+        pass
+    
+    return datetime.utcnow()
 
 
 def fetch_content_with_selectors(url, selectors):
@@ -686,60 +1079,212 @@ def suggest_selectors(url):
         dict: Suggested selectors
     """
     try:
-        response = requests.get(url, timeout=30)
+        # Fetch the page with a proper user agent
+        response = requests.get(url, timeout=30, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
         response.raise_for_status()
         
-        soup = BeautifulSoup(response.content, 'lxml')
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Determine if this is an article page or a listing/homepage
+        is_article = is_article_page(soup, url)
         
         selectors = {}
         
-        # Try to find article content
-        potential_content_selectors = [
-            'article', 
-            '.article', 
-            '.post', 
-            '.entry', 
-            '.content',
-            '#content',
-            '[itemprop="articleBody"]',
-            '.article-content',
-            '.post-content',
-            '.entry-content'
-        ]
-        
-        for selector in potential_content_selectors:
-            if soup.select_one(selector):
-                selectors['content'] = selector
-                break
-        
-        # Try to find title
-        potential_title_selectors = [
-            'h1',
-            '.title',
-            '.headline',
-            '[itemprop="headline"]',
-            '.article-title',
-            '.post-title'
-        ]
-        
-        for selector in potential_title_selectors:
-            if soup.select_one(selector):
-                selectors['title'] = selector
-                break
-        
-        # Try to find date
-        potential_date_selectors = [
-            '[itemprop="datePublished"]',
-            '.date',
-            '.published',
-            '.timestamp',
-            'time'
-        ]
-        
-        for selector in potential_date_selectors:
-            if soup.select_one(selector):
-                selectors['date'] = selector
-                break
+        if is_article:
+            # This is an article page - suggest content, title, and date selectors
+            
+            # Try to find article content
+            potential_content_selectors = [
+                'article', 
+                '.article', 
+                '.post', 
+                '.entry', 
+                '.content',
+                '#content',
+                '[itemprop="articleBody"]',
+                '.article-content',
+                '.post-content',
+                '.entry-content',
+                '.story-body',
+                '.article-body',
+                '.main-content'
+            ]
+            
+            # Score content selectors by text length
+            scored_content_selectors = []
+            for selector in potential_content_selectors:
+                elements = soup.select(selector)
+                for element in elements:
+                    text_length = len(element.get_text(strip=True))
+                    if text_length > 200:  # Only consider elements with substantial text
+                        scored_content_selectors.append((selector, text_length))
+            
+            # Sort by text length (descending)
+            scored_content_selectors.sort(key=lambda x: x[1], reverse=True)
+            
+            # Use the selector with the most text
+            if scored_content_selectors:
+                selectors['content'] = scored_content_selectors[0][0]
+            
+            # Try to find title
+            potential_title_selectors = [
+                'h1',
+                '.title',
+                '.headline',
+                '[itemprop="headline"]',
+                '.article-title',
+                '.post-title'
+            ]
+            
+            # Score title selectors by whether they're within a likely article container
+            scored_title_selectors = []
+            for selector in potential_title_selectors:
+                elements = soup.select(selector)
+                for element in elements:
+                    # Title should be reasonably long but not too long
+                    text = element.get_text(strip=True)
+                    if 10 <= len(text) <= 200:
+                        # Check if in article container
+                        in_article = False
+                        for parent in element.parents:
+                            if parent.name == 'article' or (parent.get('class') and any('article' in c.lower() for c in parent.get('class'))):
+                                in_article = True
+                                break
+                        
+                        # Score: length + being in article + having appropriate H-level
+                        score = len(text) + (50 if in_article else 0) + (100 if element.name == 'h1' else 0)
+                        scored_title_selectors.append((selector, score))
+            
+            # Sort by score (descending)
+            scored_title_selectors.sort(key=lambda x: x[1], reverse=True)
+            
+            # Use the highest scoring title selector
+            if scored_title_selectors:
+                selectors['title'] = scored_title_selectors[0][0]
+            
+            # Try to find date
+            potential_date_selectors = [
+                '[itemprop="datePublished"]',
+                '[datetime]',
+                'time',
+                '.date',
+                '.published',
+                '.timestamp',
+                '.article-date',
+                '.meta-date'
+            ]
+            
+            # First try to find elements with datetime attribute
+            for selector in potential_date_selectors:
+                elements = soup.select(selector)
+                for element in elements:
+                    if element.has_attr('datetime') or (element.name == 'time'):
+                        selectors['date'] = selector
+                        break
+                if 'date' in selectors:
+                    break
+            
+            # If no date found, look for elements with date-like text
+            if 'date' not in selectors:
+                date_pattern = re.compile(r'\d{1,4}[\/\.-]\d{1,2}[\/\.-]\d{1,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{4}', re.I)
+                
+                for el in soup.find_all(['span', 'div', 'p', 'time']):
+                    text = el.get_text(strip=True)
+                    if date_pattern.search(text):
+                        # Try to generate a selector for this element
+                        if el.get('class'):
+                            selectors['date'] = '.' + '.'.join(el.get('class'))
+                            break
+                        elif el.get('id'):
+                            selectors['date'] = '#' + el.get('id')
+                            break
+                        elif el.name == 'time':
+                            selectors['date'] = 'time'
+                            break
+        else:
+            # This is a listing/homepage - suggest list item and link selectors
+            
+            # Find article listing containers
+            potential_list_selectors = [
+                'article',
+                '.article',
+                '.post',
+                '.entry',
+                '.card',
+                '.news-item',
+                '.list-item',
+                'li.article',
+                '.article-card'
+            ]
+            
+            # Score based on number of similar elements and link presence
+            scored_list_selectors = []
+            for selector in potential_list_selectors:
+                elements = soup.select(selector)
+                if len(elements) >= 3:  # At least 3 similar elements
+                    # Check if these elements contain links
+                    link_count = sum(1 for el in elements if el.select('a[href]'))
+                    if link_count >= 3:
+                        scored_list_selectors.append((selector, link_count))
+            
+            # Use the list selector with the most links
+            if scored_list_selectors:
+                scored_list_selectors.sort(key=lambda x: x[1], reverse=True)
+                selectors['list_item'] = scored_list_selectors[0][0]
+                
+                # Now try to find a link selector within the list items
+                list_items = soup.select(selectors['list_item'])
+                
+                # Collect all links in first 3 list items
+                all_links = []
+                for item in list_items[:3]:
+                    item_links = item.select('a[href]')
+                    all_links.extend(item_links)
+                
+                # Try to identify a pattern for headline links
+                if all_links:
+                    # Try links in headings first
+                    heading_links = [link for link in all_links if link.parent.name in ['h1', 'h2', 'h3', 'h4']]
+                    if heading_links:
+                        # Use heading > a pattern
+                        selectors['link'] = selectors['list_item'] + ' ' + heading_links[0].parent.name + ' a'
+                    else:
+                        # Use class-based pattern if available
+                        classed_links = [link for link in all_links if link.get('class')]
+                        if classed_links:
+                            selectors['link'] = 'a.' + '.'.join(classed_links[0].get('class'))
+                        else:
+                            # Default to any link in the list item
+                            selectors['link'] = selectors['list_item'] + ' a'
+            
+            # If no list selector found, try to find a common link pattern
+            if 'list_item' not in selectors:
+                # Look for groups of similar links
+                link_patterns = {}
+                
+                # Check links inside headings
+                for tag in ['h2', 'h3']:
+                    links = soup.select(f'{tag} a')
+                    if len(links) >= 3:
+                        link_patterns[f'{tag} a'] = len(links)
+                
+                # Check links with specific classes
+                for link in soup.select('a[href]'):
+                    if link.get('class'):
+                        cls = '.'.join(link.get('class'))
+                        selector = f'a.{cls}'
+                        if selector in link_patterns:
+                            link_patterns[selector] += 1
+                        else:
+                            link_patterns[selector] = 1
+                
+                # Use the pattern with the most occurrences
+                if link_patterns:
+                    best_pattern = max(link_patterns.items(), key=lambda x: x[1])
+                    if best_pattern[1] >= 3:  # At least 3 occurrences
+                        selectors['link'] = best_pattern[0]
         
         return selectors
     
