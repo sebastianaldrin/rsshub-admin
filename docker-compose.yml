@@ -47,7 +47,7 @@ services:
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=production
-      - RSSHUB_BASE_URL=http://rsshub:1200
+      - RSSHUB_BASE_URL=http://127.0.0.1:1200
       - SECRET_KEY=change-this-to-a-random-string
     volumes:
       - ./instance:/app/instance
