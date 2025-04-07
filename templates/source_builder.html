@@ -516,11 +516,17 @@
                 }
             }
             
-            // Custom selectors tab - use generic approach with selectors
+            // Custom selectors tab - use custom route with domain
             if (activeTab === 'selectors') {
                 const url = document.getElementById('originUrl')?.value || '';
                 if (!url) return '';
-                return `rsshub/radar?url=${encodeURIComponent(url)}`;
+                
+                try {
+                    const domain = new URL(url).hostname.replace(/\./g, '-');
+                    return `custom/${domain}`;
+                } catch(e) {
+                    return '';
+                }
             }
             
             return '';

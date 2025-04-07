@@ -7,11 +7,13 @@ from wtforms import StringField, BooleanField, TextAreaField, SelectField, Integ
 from wtforms.validators import DataRequired, URL, Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 import logging
+import requests
+from bs4 import BeautifulSoup
 
 from models import db, FeedSource, FetchLog, FeedItem, Alert, SystemSettings
 from utils import (
     fetch_and_parse_feed, validate_rsshub_route, check_all_feeds,
-    get_feed_health, get_feed_preview, suggest_selectors
+    get_feed_health, get_feed_preview
 )
 
 # Create Flask app
@@ -152,6 +154,78 @@ def api_add_feed():
             'success': False,
             'error': str(e)
         }), 500
+
+def suggest_selectors(url):
+    """
+    Suggest selectors for a given URL by analyzing page structure
+    
+    Args:
+        url: URL to analyze
+    
+    Returns:
+        dict: Suggested selectors
+    """
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        selectors = {}
+        
+        # Try to find article content
+        potential_content_selectors = [
+            'article', 
+            '.article', 
+            '.post', 
+            '.entry', 
+            '.content',
+            '#content',
+            '[itemprop="articleBody"]',
+            '.article-content',
+            '.post-content',
+            '.entry-content'
+        ]
+        
+        for selector in potential_content_selectors:
+            if soup.select_one(selector):
+                selectors['content'] = selector
+                break
+        
+        # Try to find title
+        potential_title_selectors = [
+            'h1',
+            '.title',
+            '.headline',
+            '[itemprop="headline"]',
+            '.article-title',
+            '.post-title'
+        ]
+        
+        for selector in potential_title_selectors:
+            if soup.select_one(selector):
+                selectors['title'] = selector
+                break
+        
+        # Try to find date
+        potential_date_selectors = [
+            '[itemprop="datePublished"]',
+            '.date',
+            '.published',
+            '.timestamp',
+            'time'
+        ]
+        
+        for selector in potential_date_selectors:
+            if soup.select_one(selector):
+                selectors['date'] = selector
+                break
+        
+        return selectors
+    
+    except Exception as e:
+        app.logger.error(f"Error suggesting selectors for {url}: {str(e)}")
+        return {}
 
 @app.route('/api/feed/suggest-selectors', methods=['POST'])
 def api_suggest_selectors():

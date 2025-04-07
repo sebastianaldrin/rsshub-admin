@@ -23,6 +23,115 @@ def fetch_and_parse_feed(feed_source, save_items=True):
     """
     start_time = time.time()
     
+    # Check if this is a custom route
+    if feed_source.rsshub_route.startswith('custom/'):
+        # This is a custom route, use direct scraping
+        url = feed_source.original_url
+        if not url:
+            return 'error', 'Original URL is required for custom routes', None, 0
+        
+        try:
+            # Parse custom selectors
+            custom_selectors = {}
+            if feed_source.custom_selectors:
+                try:
+                    custom_selectors = json.loads(feed_source.custom_selectors)
+                except json.JSONDecodeError:
+                    return 'error', 'Invalid custom selectors JSON', None, 0
+            
+            if not custom_selectors:
+                return 'error', 'Custom selectors are required for custom routes', None, 0
+            
+            # Fetch the page
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            
+            # Parse the page
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extract title
+            title = "Untitled"
+            if 'title' in custom_selectors and custom_selectors['title']:
+                title_element = soup.select_one(custom_selectors['title'])
+                if title_element:
+                    title = title_element.get_text(strip=True)
+            
+            # Extract content
+            content = ""
+            if 'content' in custom_selectors and custom_selectors['content']:
+                content_element = soup.select_one(custom_selectors['content'])
+                if content_element:
+                    content = str(content_element)
+                    
+            # Extract date
+            published_at = datetime.utcnow()
+            if 'date' in custom_selectors and custom_selectors['date']:
+                date_element = soup.select_one(custom_selectors['date'])
+                if date_element and date_element.get('datetime'):
+                    try:
+                        published_at = datetime.fromisoformat(date_element['datetime'].replace('Z', '+00:00'))
+                    except:
+                        published_at = datetime.utcnow()
+            
+            if save_items:
+                # Clear existing items
+                FeedItem.query.filter_by(feed_source_id=feed_source.id).delete()
+                
+                # Create feed item
+                item = FeedItem(
+                    feed_source_id=feed_source.id,
+                    title=title,
+                    link=url,
+                    guid=url,
+                    content=content,
+                    published_at=published_at,
+                    has_full_content=True if content else False,
+                    word_count=len(content.split()) if content else 0,
+                    extraction_metadata=json.dumps({
+                        "extraction_method": "custom_selectors",
+                        "content_length": len(content) if content else 0
+                    })
+                )
+                
+                # Add new item
+                db.session.add(item)
+                db.session.commit()
+            
+            # Create fetch log
+            fetch_log = FetchLog(
+                feed_source_id=feed_source.id,
+                status='success',
+                item_count=1,
+                quality_score=70,  # Arbitrary score for custom routes
+                fetch_duration=time.time() - start_time
+            )
+            db.session.add(fetch_log)
+            db.session.commit()
+            
+            return 'success', 'Custom route processed successfully', None, 1
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Create error log
+            fetch_log = FetchLog(
+                feed_source_id=feed_source.id,
+                status='error',
+                error_message=error_msg,
+                fetch_duration=time.time() - start_time
+            )
+            db.session.add(fetch_log)
+            
+            # Create alert
+            create_alert(
+                feed_source.id, 
+                'error', 
+                f"Failed to process custom route: {feed_source.name} - {error_msg}"
+            )
+            
+            db.session.commit()
+            return 'error', error_msg, None, 0
+    
     # Construct the full RSSHub URL
     rsshub_base_url = current_app.config.get('RSSHUB_BASE_URL')
     if not rsshub_base_url:
@@ -374,6 +483,10 @@ def create_alert(feed_source_id, level, message):
 
 def validate_rsshub_route(route):
     """Validate if a RSSHub route exists and returns valid RSS"""
+    # Special case for custom routes
+    if route.startswith('custom/'):
+        return True, "Custom route format is valid"
+        
     rsshub_base_url = current_app.config.get('RSSHUB_BASE_URL')
     if not rsshub_base_url:
         return False, "RSSHub base URL not configured"
@@ -433,6 +546,10 @@ def get_feed_health(feed_source_id, days=7):
 
 def get_feed_preview(rsshub_route, max_items=3):
     """Get a preview of feed items without saving to database"""
+    # Handle custom routes
+    if rsshub_route.startswith('custom/'):
+        return None  # Previews for custom routes not implemented yet
+        
     rsshub_base_url = current_app.config.get('RSSHUB_BASE_URL')
     if not rsshub_base_url:
         return None
