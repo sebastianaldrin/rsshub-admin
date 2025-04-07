@@ -1,0 +1,855 @@
+{% extends 'base.html' %}
+
+{% block title %}Source Builder - RSSHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1>Source Builder</h1>
+        <p class="text-muted">Quickly create and test RSSHub routes for any website</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Build Your Source</h5>
+            </div>
+            <div class="card-body">
+                <!-- Source Type Selection Tabs -->
+                <ul class="nav nav-tabs mb-4" id="sourceTypeTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="common-tab" data-bs-toggle="tab" data-bs-target="#common" type="button" role="tab" aria-controls="common" aria-selected="true">Common Sites</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="custom-tab" data-bs-toggle="tab" data-bs-target="#custom" type="button" role="tab" aria-controls="custom" aria-selected="false">Custom Route</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="selectors-tab" data-bs-toggle="tab" data-bs-target="#selectors" type="button" role="tab" aria-controls="selectors" aria-selected="false">Custom Selectors</button>
+                    </li>
+                </ul>
+                
+                <!-- Tab Content -->
+                <div class="tab-content" id="sourceTypeContent">
+                    <!-- Common Sites Tab -->
+                    <div class="tab-pane fade show active" id="common" role="tabpanel" aria-labelledby="common-tab">
+                        <div class="mb-3">
+                            <label for="siteType" class="form-label">Site Type</label>
+                            <select id="siteType" class="form-select">
+                                <option value="">-- Select Site Type --</option>
+                                <option value="reddit">Reddit</option>
+                                <option value="twitter">Twitter</option>
+                                <option value="youtube">YouTube</option>
+                                <option value="github">GitHub</option>
+                                <option value="medium">Medium</option>
+                                <option value="substack">Substack</option>
+                                <option value="wordpress">WordPress</option>
+                                <option value="generic">Generic Website</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Dynamic Form Fields based on site type -->
+                        <div id="siteTypeFields">
+                            <!-- Fields will be loaded dynamically based on selection -->
+                        </div>
+                    </div>
+                    
+                    <!-- Custom Route Tab -->
+                    <div class="tab-pane fade" id="custom" role="tabpanel" aria-labelledby="custom-tab">
+                        <div class="mb-3">
+                            <label for="customRoute" class="form-label">RSSHub Route</label>
+                            <div class="input-group">
+                                <span class="input-group-text" id="route-base-url">{{ config['RSSHUB_BASE_URL'] }}/</span>
+                                <input type="text" id="customRoute" class="form-control" placeholder="e.g., reddit/r/programming">
+                            </div>
+                            <div class="form-text">Enter the route part of the RSSHub URL</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Custom Selectors Tab -->
+                    <div class="tab-pane fade" id="selectors" role="tabpanel" aria-labelledby="selectors-tab">
+                        <div class="mb-3">
+                            <label for="originUrl" class="form-label">Original Website URL</label>
+                            <div class="input-group">
+                                <input type="url" id="originUrl" class="form-control" placeholder="https://example.com/blog">
+                                <button class="btn btn-outline-secondary" type="button" id="suggestSelectors">Suggest Selectors</button>
+                            </div>
+                            <div class="form-text">Enter the URL of the original website to analyze its structure</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="contentSelector" class="form-label">Content Selector</label>
+                            <input type="text" id="contentSelector" class="form-control" placeholder=".article-content">
+                            <div class="form-text">CSS selector for the main content</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="titleSelector" class="form-label">Title Selector</label>
+                            <input type="text" id="titleSelector" class="form-control" placeholder="h1.title">
+                            <div class="form-text">CSS selector for the article title</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="dateSelector" class="form-label">Date Selector</label>
+                            <input type="text" id="dateSelector" class="form-control" placeholder="time.published">
+                            <div class="form-text">CSS selector for the publication date</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="linkSelector" class="form-label">Link Selector</label>
+                            <input type="text" id="linkSelector" class="form-control" placeholder="a.read-more">
+                            <div class="form-text">CSS selector for the article link</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- General Feed Information -->
+                <hr class="my-4">
+                <h5 class="mb-3">Feed Information</h5>
+                
+                <div class="mb-3">
+                    <label for="feedName" class="form-label">Feed Name <span class="text-danger">*</span></label>
+                    <input type="text" id="feedName" class="form-control" placeholder="Name your feed" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="feedDescription" class="form-label">Description</label>
+                    <textarea id="feedDescription" class="form-control" rows="2" placeholder="Optional description"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="feedCategory" class="form-label">Category</label>
+                    <input type="text" id="feedCategory" class="form-control" placeholder="e.g., News, Technology">
+                </div>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="feedActive" checked>
+                    <label class="form-check-label" for="feedActive">
+                        Active (enable feed checking)
+                    </label>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="checkFrequency" class="form-label">Check Frequency (minutes)</label>
+                        <input type="number" id="checkFrequency" class="form-control" value="30" min="5">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="jsRequired" class="form-label">JavaScript Rendering</label>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="jsRequired">
+                            <label class="form-check-label" for="jsRequired">
+                                Site requires JavaScript
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-flex justify-content-between">
+                    <button type="button" id="resetForm" class="btn btn-outline-secondary">Reset</button>
+                    <div>
+                        <button type="button" id="testSourceBtn" class="btn btn-outline-primary me-2">Test Source</button>
+                        <button type="button" id="saveSourceBtn" class="btn btn-primary">Save Source</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Preview</h5>
+                <div id="previewStatus" class="badge bg-secondary">Not tested</div>
+            </div>
+            <div class="card-body">
+                <div id="routePreview" class="mb-3">
+                    <strong>Generated Route:</strong>
+                    <div class="mt-2 p-2 bg-light rounded">
+                        <code id="generatedRoute">Route will appear here</code>
+                    </div>
+                </div>
+                
+                <div id="selectorsPreview" class="mb-3">
+                    <strong>Selectors:</strong>
+                    <div class="mt-2 p-2 bg-light rounded">
+                        <code id="generatedSelectors">No custom selectors</code>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div id="contentPreview">
+                    <div class="text-center text-muted py-5">
+                        <p>Click "Test Source" to preview content</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Help & Tips</h5>
+            </div>
+            <div class="card-body">
+                <div id="siteTypeHelp">
+                    <h6>Getting Started</h6>
+                    <ul>
+                        <li>Select a site type from the dropdown</li>
+                        <li>Fill in the required fields</li>
+                        <li>Test your source before saving</li>
+                    </ul>
+                    
+                    <h6>Custom Selectors Help</h6>
+                    <p>CSS selectors help extract content from pages. Examples:</p>
+                    <ul>
+                        <li><code>.class-name</code> - Select by class</li>
+                        <li><code>#id-name</code> - Select by ID</li>
+                        <li><code>article p</code> - All paragraphs in articles</li>
+                    </ul>
+                    
+                    <p><a href="https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors" target="_blank" class="btn btn-sm btn-outline-primary mt-2">CSS Selectors Guide</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Site type field mapping
+        const siteTypeFields = {
+            'reddit': `
+                <div class="mb-3">
+                    <label for="redditSubreddit" class="form-label">Subreddit</label>
+                    <div class="input-group">
+                        <span class="input-group-text">r/</span>
+                        <input type="text" id="redditSubreddit" class="form-control" placeholder="programming">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="redditSort" class="form-label">Sort</label>
+                    <select id="redditSort" class="form-select">
+                        <option value="">Hot (default)</option>
+                        <option value="new">New</option>
+                        <option value="rising">Rising</option>
+                        <option value="top">Top</option>
+                        <option value="controversial">Controversial</option>
+                    </select>
+                </div>
+            `,
+            
+            'twitter': `
+                <div class="mb-3">
+                    <label for="twitterUsername" class="form-label">Username</label>
+                    <div class="input-group">
+                        <span class="input-group-text">@</span>
+                        <input type="text" id="twitterUsername" class="form-control" placeholder="username">
+                    </div>
+                </div>
+            `,
+            
+            'youtube': `
+                <div class="mb-3">
+                    <label for="youtubeChannel" class="form-label">Channel ID</label>
+                    <input type="text" id="youtubeChannel" class="form-control" placeholder="UCxxxxxxxx">
+                    <div class="form-text">Find the channel ID in the URL or channel page source</div>
+                </div>
+            `,
+            
+            'github': `
+                <div class="mb-3">
+                    <label for="githubUsername" class="form-label">Username</label>
+                    <input type="text" id="githubUsername" class="form-control" placeholder="github-username">
+                </div>
+                <div class="mb-3">
+                    <label for="githubRepo" class="form-label">Repository (Optional)</label>
+                    <input type="text" id="githubRepo" class="form-control" placeholder="repository-name">
+                    <div class="form-text">Leave empty to track all user activity</div>
+                </div>
+            `,
+            
+            'medium': `
+                <div class="mb-3">
+                    <label for="mediumUsername" class="form-label">Username or Publication</label>
+                    <input type="text" id="mediumUsername" class="form-control" placeholder="@username or publication">
+                </div>
+            `,
+            
+            'substack': `
+                <div class="mb-3">
+                    <label for="substackName" class="form-label">Substack Name</label>
+                    <div class="input-group">
+                        <input type="text" id="substackName" class="form-control" placeholder="newsletter-name">
+                        <span class="input-group-text">.substack.com</span>
+                    </div>
+                </div>
+            `,
+            
+            'wordpress': `
+                <div class="mb-3">
+                    <label for="wordpressUrl" class="form-label">WordPress Site URL</label>
+                    <input type="url" id="wordpressUrl" class="form-control" placeholder="https://example.wordpress.com">
+                </div>
+            `,
+            
+            'generic': `
+                <div class="mb-3">
+                    <label for="genericUrl" class="form-label">Website URL</label>
+                    <input type="url" id="genericUrl" class="form-control" placeholder="https://example.com/blog">
+                    <div class="form-text">RSSHub will attempt to auto-discover feeds or generate one</div>
+                </div>
+            `
+        };
+        
+        // Help content for each site type
+        const siteTypeHelp = {
+            'reddit': `
+                <h6>Reddit Feed Help</h6>
+                <p>Create RSS feeds from any subreddit.</p>
+                <ul>
+                    <li>Enter the subreddit name without "r/"</li>
+                    <li>Choose a sort method (optional)</li>
+                    <li>Frequency: Reddit updates frequently, 15-30 min check is recommended</li>
+                </ul>
+                <p><strong>Example:</strong> For r/programming with "new" sort, use "programming" as subreddit and select "New" sort.</p>
+            `,
+            
+            'twitter': `
+                <h6>Twitter Feed Help</h6>
+                <p>Create RSS feeds from Twitter accounts.</p>
+                <ul>
+                    <li>Enter username without "@"</li>
+                    <li>Includes tweets, retweets, and media</li>
+                    <li>Note: Twitter often changes its API, may require updates</li>
+                </ul>
+            `,
+            
+            'youtube': `
+                <h6>YouTube Feed Help</h6>
+                <p>Create RSS feeds from YouTube channels.</p>
+                <ul>
+                    <li>Find the channel ID in the page source (search for "channelId")</li>
+                    <li>Or from URL: youtube.com/channel/<strong>UCxxxxxxxx</strong></li>
+                    <li>For user pages, use the username from youtube.com/user/<strong>username</strong></li>
+                </ul>
+            `,
+            
+            'github': `
+                <h6>GitHub Feed Help</h6>
+                <p>Create RSS feeds from GitHub users or repositories.</p>
+                <ul>
+                    <li>For user activity: just enter the username</li>
+                    <li>For repository releases: enter both username and repository</li>
+                    <li>For stars: add "/stars" to the username field</li>
+                </ul>
+            `,
+            
+            'generic': `
+                <h6>Generic Website Help</h6>
+                <p>RSSHub will try to generate a feed for any website.</p>
+                <ul>
+                    <li>Enter the full URL including http/https</li>
+                    <li>Consider using Custom Selectors tab for more control</li>
+                    <li>Some sites may not work with auto-discovery</li>
+                </ul>
+            `
+        };
+        
+        // Elements
+        const siteTypeSelect = document.getElementById('siteType');
+        const siteTypeFields = document.getElementById('siteTypeFields');
+        const siteTypeHelp = document.getElementById('siteTypeHelp');
+        const generatedRoute = document.getElementById('generatedRoute');
+        const generatedSelectors = document.getElementById('generatedSelectors');
+        const testSourceBtn = document.getElementById('testSourceBtn');
+        const saveSourceBtn = document.getElementById('saveSourceBtn');
+        const contentPreview = document.getElementById('contentPreview');
+        const resetFormBtn = document.getElementById('resetForm');
+        const suggestSelectorsBtn = document.getElementById('suggestSelectors');
+        
+        // Event listeners
+        siteTypeSelect.addEventListener('change', function() {
+            updateSiteTypeFields();
+            updateRoutePreview();
+        });
+        
+        testSourceBtn.addEventListener('click', function() {
+            testSource();
+        });
+        
+        saveSourceBtn.addEventListener('click', function() {
+            saveSource();
+        });
+        
+        resetFormBtn.addEventListener('click', function() {
+            resetForm();
+        });
+        
+        suggestSelectorsBtn.addEventListener('click', function() {
+            suggestSelectors();
+        });
+        
+        // Tab change listeners
+        document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function() {
+                updateRoutePreview();
+            });
+        });
+        
+        // Custom selectors field listeners
+        document.querySelectorAll('#contentSelector, #titleSelector, #dateSelector, #linkSelector').forEach(input => {
+            input.addEventListener('input', function() {
+                updateSelectorsPreview();
+            });
+        });
+        
+        // Update fields based on site type
+        function updateSiteTypeFields() {
+            const siteType = siteTypeSelect.value;
+            
+            if (siteType && siteTypeFields[siteType]) {
+                siteTypeFields.innerHTML = siteTypeFields[siteType];
+                
+                // Add change listeners to new fields
+                siteTypeFields.querySelectorAll('input, select').forEach(input => {
+                    input.addEventListener('change', updateRoutePreview);
+                    input.addEventListener('input', updateRoutePreview);
+                });
+            } else {
+                siteTypeFields.innerHTML = '<p class="text-muted">Select a site type to see options</p>';
+            }
+            
+            // Update help content
+            if (siteType && siteTypeHelp[siteType]) {
+                siteTypeHelp.innerHTML = siteTypeHelp[siteType];
+            } else {
+                siteTypeHelp.innerHTML = `
+                    <h6>Getting Started</h6>
+                    <ul>
+                        <li>Select a site type from the dropdown</li>
+                        <li>Fill in the required fields</li>
+                        <li>Test your source before saving</li>
+                    </ul>
+                `;
+            }
+        }
+        
+        // Generate RSSHub route based on form data
+        function generateRoute() {
+            const activeTab = document.querySelector('.tab-pane.active').id;
+            
+            // Custom route tab
+            if (activeTab === 'custom') {
+                return document.getElementById('customRoute').value;
+            }
+            
+            // Common sites tab
+            if (activeTab === 'common') {
+                const siteType = siteTypeSelect.value;
+                
+                if (siteType === 'reddit') {
+                    const subreddit = document.getElementById('redditSubreddit')?.value || '';
+                    const sort = document.getElementById('redditSort')?.value || '';
+                    
+                    if (!subreddit) return '';
+                    
+                    return sort ? `reddit/r/${subreddit}/${sort}` : `reddit/r/${subreddit}`;
+                }
+                
+                else if (siteType === 'twitter') {
+                    const username = document.getElementById('twitterUsername')?.value || '';
+                    if (!username) return '';
+                    return `twitter/user/${username}`;
+                }
+                
+                else if (siteType === 'youtube') {
+                    const channel = document.getElementById('youtubeChannel')?.value || '';
+                    if (!channel) return '';
+                    return `youtube/channel/${channel}`;
+                }
+                
+                else if (siteType === 'github') {
+                    const username = document.getElementById('githubUsername')?.value || '';
+                    const repo = document.getElementById('githubRepo')?.value || '';
+                    
+                    if (!username) return '';
+                    
+                    if (repo) {
+                        return `github/repos/${username}/${repo}/releases`;
+                    }
+                    return `github/repos/${username}`;
+                }
+                
+                else if (siteType === 'medium') {
+                    const username = document.getElementById('mediumUsername')?.value || '';
+                    if (!username) return '';
+                    return `medium/user/${username}`;
+                }
+                
+                else if (siteType === 'substack') {
+                    const name = document.getElementById('substackName')?.value || '';
+                    if (!name) return '';
+                    return `substack/${name}`;
+                }
+                
+                else if (siteType === 'wordpress') {
+                    const url = document.getElementById('wordpressUrl')?.value || '';
+                    if (!url) return '';
+                    
+                    // Extract domain from URL
+                    try {
+                        const domain = new URL(url).hostname;
+                        return `wordpress/${domain}`;
+                    } catch (e) {
+                        return '';
+                    }
+                }
+                
+                else if (siteType === 'generic') {
+                    const url = document.getElementById('genericUrl')?.value || '';
+                    if (!url) return '';
+                    return `rsshub/radar?url=${encodeURIComponent(url)}`;
+                }
+            }
+            
+            // Custom selectors tab - use generic approach with selectors
+            if (activeTab === 'selectors') {
+                const url = document.getElementById('originUrl')?.value || '';
+                if (!url) return '';
+                return `rsshub/radar?url=${encodeURIComponent(url)}`;
+            }
+            
+            return '';
+        }
+        
+        // Generate selectors JSON
+        function generateSelectors() {
+            const activeTab = document.querySelector('.tab-pane.active').id;
+            
+            if (activeTab !== 'selectors') {
+                return null;
+            }
+            
+            const selectors = {};
+            
+            const contentSelector = document.getElementById('contentSelector')?.value || '';
+            const titleSelector = document.getElementById('titleSelector')?.value || '';
+            const dateSelector = document.getElementById('dateSelector')?.value || '';
+            const linkSelector = document.getElementById('linkSelector')?.value || '';
+            
+            if (contentSelector) selectors.content = contentSelector;
+            if (titleSelector) selectors.title = titleSelector;
+            if (dateSelector) selectors.date = dateSelector;
+            if (linkSelector) selectors.link = linkSelector;
+            
+            return Object.keys(selectors).length > 0 ? selectors : null;
+        }
+        
+        // Update the route preview
+        function updateRoutePreview() {
+            const route = generateRoute();
+            
+            if (route) {
+                generatedRoute.textContent = route;
+            } else {
+                generatedRoute.textContent = 'Route will appear here';
+            }
+            
+            updateSelectorsPreview();
+        }
+        
+        // Update the selectors preview
+        function updateSelectorsPreview() {
+            const selectors = generateSelectors();
+            
+            if (selectors) {
+                generatedSelectors.textContent = JSON.stringify(selectors, null, 2);
+            } else {
+                generatedSelectors.textContent = 'No custom selectors';
+            }
+        }
+        
+        // Test the source
+        function testSource() {
+            const route = generateRoute();
+            
+            if (!route) {
+                alert('Please complete the form to generate a valid RSSHub route');
+                return;
+            }
+            
+            const previewStatus = document.getElementById('previewStatus');
+            previewStatus.textContent = 'Testing...';
+            previewStatus.className = 'badge bg-info';
+            
+            contentPreview.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Fetching preview...</p>
+                </div>
+            `;
+            
+            // First validate the route
+            fetch('/api/feed/validate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ route: route })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.valid) {
+                    previewStatus.textContent = 'Invalid';
+                    previewStatus.className = 'badge bg-danger';
+                    
+                    contentPreview.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h6>Invalid Route</h6>
+                            <p>${data.message}</p>
+                        </div>
+                    `;
+                    return Promise.reject('Invalid route');
+                }
+                
+                previewStatus.textContent = 'Route Valid';
+                previewStatus.className = 'badge bg-success';
+                
+                // Now get preview items
+                return fetch('/api/feed/preview', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ route: route })
+                });
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                if (!data.items || data.items.length === 0) {
+                    contentPreview.innerHTML = `
+                        <div class="alert alert-warning">
+                            <h6>No Items</h6>
+                            <p>The feed is valid but contains no items.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Render preview items
+                let html = `<h6 class="mb-3">Found ${data.items.length} items</h6>`;
+                
+                data.items.forEach(item => {
+                    // Calculate word count
+                    const wordCount = item.word_count || '?';
+                    
+                    html += `
+                        <div class="card mb-3">
+                            <div class="card-body p-3">
+                                <h6 class="card-title">${item.title}</h6>
+                                <div class="d-flex mb-2">
+                                    <a href="${item.link}" target="_blank" class="btn btn-sm btn-outline-primary me-2">View Original</a>
+                                    <small class="text-muted">${item.published || ''}</small>
+                                </div>
+                                
+                                ${item.image_url ? `<img src="${item.image_url}" class="img-fluid mb-2" style="max-height: 100px; max-width: 200px;">` : ''}
+                                
+                                <div class="content-preview small text-muted">
+                                    ${item.text_content || '<span class="text-muted">No content</span>'}
+                                </div>
+                                
+                                <div class="mt-2">
+                                    <span class="badge bg-info">~${wordCount} words</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                contentPreview.innerHTML = html;
+                previewStatus.textContent = 'Success';
+                previewStatus.className = 'badge bg-success';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                
+                if (error !== 'Invalid route') {
+                    previewStatus.textContent = 'Error';
+                    previewStatus.className = 'badge bg-danger';
+                    
+                    contentPreview.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h6>Error</h6>
+                            <p>Failed to fetch preview: ${error.message || error}</p>
+                        </div>
+                    `;
+                }
+            });
+        }
+        
+        // Save the source
+        function saveSource() {
+            const route = generateRoute();
+            
+            if (!route) {
+                alert('Please complete the form to generate a valid RSSHub route');
+                return;
+            }
+            
+            const feedName = document.getElementById('feedName').value;
+            
+            if (!feedName) {
+                alert('Please enter a name for your feed');
+                return;
+            }
+            
+            const feedData = {
+                name: feedName,
+                description: document.getElementById('feedDescription')?.value || '',
+                category: document.getElementById('feedCategory')?.value || '',
+                rsshub_route: route,
+                original_url: document.getElementById('originUrl')?.value || 
+                              document.getElementById('genericUrl')?.value || '',
+                is_active: document.getElementById('feedActive')?.checked || true,
+                check_frequency: parseInt(document.getElementById('checkFrequency')?.value || 30),
+                requires_javascript: document.getElementById('jsRequired')?.checked || false,
+                custom_selectors: JSON.stringify(generateSelectors() || {})
+            };
+            
+            // Submit form data
+            fetch('/api/feed/add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify(feedData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                alert('Feed added successfully!');
+                
+                // Redirect to feed detail
+                if (data.feed_id) {
+                    window.location.href = `/feed/${data.feed_id}`;
+                } else {
+                    window.location.href = '/feeds';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(`Error saving feed: ${error.message || error}`);
+            });
+        }
+        
+        // Reset the form
+        function resetForm() {
+            document.getElementById('feedName').value = '';
+            document.getElementById('feedDescription').value = '';
+            document.getElementById('feedCategory').value = '';
+            document.getElementById('checkFrequency').value = '30';
+            document.getElementById('feedActive').checked = true;
+            document.getElementById('jsRequired').checked = false;
+            
+            siteTypeSelect.value = '';
+            siteTypeFields.innerHTML = '<p class="text-muted">Select a site type to see options</p>';
+            
+            document.getElementById('customRoute').value = '';
+            
+            document.getElementById('originUrl').value = '';
+            document.getElementById('contentSelector').value = '';
+            document.getElementById('titleSelector').value = '';
+            document.getElementById('dateSelector').value = '';
+            document.getElementById('linkSelector').value = '';
+            
+            updateRoutePreview();
+            
+            contentPreview.innerHTML = `
+                <div class="text-center text-muted py-5">
+                    <p>Click "Test Source" to preview content</p>
+                </div>
+            `;
+            
+            const previewStatus = document.getElementById('previewStatus');
+            previewStatus.textContent = 'Not tested';
+            previewStatus.className = 'badge bg-secondary';
+        }
+        
+        // Suggest selectors
+        function suggestSelectors() {
+            const url = document.getElementById('originUrl').value;
+            
+            if (!url) {
+                alert('Please enter a URL to analyze');
+                return;
+            }
+            
+            const contentSelector = document.getElementById('contentSelector');
+            const titleSelector = document.getElementById('titleSelector');
+            const dateSelector = document.getElementById('dateSelector');
+            
+            // Update UI
+            contentSelector.value = '';
+            titleSelector.value = '';
+            dateSelector.value = '';
+            
+            contentSelector.placeholder = 'Analyzing...';
+            titleSelector.placeholder = 'Analyzing...';
+            dateSelector.placeholder = 'Analyzing...';
+            
+            // Call API to suggest selectors
+            fetch('/api/feed/suggest-selectors', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Update selectors with suggestions
+                if (data.selectors.content) contentSelector.value = data.selectors.content;
+                if (data.selectors.title) titleSelector.value = data.selectors.title;
+                if (data.selectors.date) dateSelector.value = data.selectors.date;
+                
+                // Reset placeholders
+                contentSelector.placeholder = '.article-content';
+                titleSelector.placeholder = 'h1.title';
+                dateSelector.placeholder = 'time.published';
+                
+                // Update preview
+                updateSelectorsPreview();
+                
+                alert('Selectors suggested based on page analysis');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(`Error suggesting selectors: ${error.message || error}`);
+                
+                // Reset placeholders
+                contentSelector.placeholder = '.article-content';
+                titleSelector.placeholder = 'h1.title';
+                dateSelector.placeholder = 'time.published';
+            });
+        }
+    });
+</script>
+{% endblock %}

@@ -114,6 +114,63 @@
         </div>
     </div>
 
+<!-- Extraction Stats Card -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0">Content Extraction Stats</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12 mb-3">
+                <h6>Extraction Methods Used</h6>
+                
+                <div class="mt-3" id="extractionChart">
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span class="ms-2">Loading extraction stats...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-2">
+            <div class="col-md-6">
+                <h6>Fallback Information</h6>
+                <p class="text-muted small">
+                    The system uses multiple methods to extract content, with automatic fallbacks:
+                </p>
+                <ol class="small">
+                    <li><strong>content_field</strong>: Primary content extraction (best quality)</li>
+                    <li><strong>content_encoded</strong>: Alternative content field</li>
+                    <li><strong>description</strong>: Feed description field</li>
+                    <li><strong>summary</strong>: Feed summary as fallback</li>
+                    <li><strong>custom_selectors</strong>: Your defined CSS selectors (if configured)</li>
+                </ol>
+            </div>
+            
+            <div class="col-md-6">
+                <h6>Content Quality</h6>
+                <div class="list-group list-group-flush small">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Full Content Items</span>
+                        <span class="badge bg-success rounded-pill" id="fullContentCount">Loading...</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Partial Content Items</span>
+                        <span class="badge bg-warning rounded-pill" id="partialContentCount">Loading...</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Average Word Count</span>
+                        <span class="badge bg-info rounded-pill" id="avgWordCount">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
     <!-- Latest Feed Content -->
     <div class="col-lg-6">
         <div class="card">
@@ -341,6 +398,84 @@
                 });
             })
             .catch(error => console.error('Error loading chart data:', error));
+    });
+</script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Fetch extraction stats
+        fetch('/api/feed/extraction-stats/{{ feed.id }}')
+            .then(response => response.json())
+            .then(data => {
+                // Update content quality stats
+                document.getElementById('fullContentCount').textContent = data.full_content_count;
+                document.getElementById('partialContentCount').textContent = data.partial_content_count;
+                document.getElementById('avgWordCount').textContent = data.avg_word_count;
+                
+                // Create the extraction methods chart
+                const methods = data.extraction_methods;
+                const methodLabels = Object.keys(methods);
+                const methodCounts = Object.values(methods);
+                
+                const chartCtx = document.getElementById('extractionChart');
+                
+                // Only create chart if we have data
+                if (methodLabels.length > 0) {
+                    // Replace loading spinner with canvas
+                    chartCtx.innerHTML = '<canvas id="methodsChart" width="400" height="200"></canvas>';
+                    
+                    // Create the chart
+                    const methodsCanvas = document.getElementById('methodsChart').getContext('2d');
+                    new Chart(methodsCanvas, {
+                        type: 'pie',
+                        data: {
+                            labels: methodLabels,
+                            datasets: [{
+                                data: methodCounts,
+                                backgroundColor: [
+                                    '#4e73df',  // content_field - Blue
+                                    '#1cc88a',  // content_encoded - Green
+                                    '#36b9cc',  // description - Cyan
+                                    '#f6c23e',  // summary - Yellow
+                                    '#e74a3b',  // custom_selectors - Red
+                                    '#6c757d'   // none or other - Gray
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'right',
+                                    labels: {
+                                        font: {
+                                            size: 12
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const label = context.label || '';
+                                            const value = context.formattedValue;
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = Math.round((context.raw / total) * 100);
+                                            return `${label}: ${value} (${percentage}%)`;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    chartCtx.innerHTML = '<div class="alert alert-info">No extraction data available yet.</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading extraction stats:', error);
+                document.getElementById('extractionChart').innerHTML = 
+                    '<div class="alert alert-danger">Error loading extraction stats</div>';
+            });
     });
 </script>
 {% endblock %}

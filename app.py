@@ -103,6 +103,149 @@ def dashboard():
         categories=categories
     )
 
+@app.route('/source-builder')
+def source_builder():
+    """Source Builder interface for easily creating new feeds"""
+    return render_template('source_builder.html')
+
+@app.route('/api/feed/add', methods=['POST'])
+def api_add_feed():
+    """API endpoint to add a new feed"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('name'):
+            return jsonify({'error': 'Feed name is required'}), 400
+            
+        if not data.get('rsshub_route'):
+            return jsonify({'error': 'RSSHub route is required'}), 400
+        
+        # Create new feed source
+        feed = FeedSource(
+            name=data.get('name'),
+            description=data.get('description', ''),
+            category=data.get('category', ''),
+            rsshub_route=data.get('rsshub_route'),
+            original_url=data.get('original_url', ''),
+            is_active=data.get('is_active', True),
+            check_frequency=data.get('check_frequency', 30),
+            requires_javascript=data.get('requires_javascript', False),
+            custom_selectors=data.get('custom_selectors', '')
+        )
+        
+        db.session.add(feed)
+        db.session.commit()
+        
+        # Fetch the feed for the first time
+        fetch_and_parse_feed(feed)
+        
+        return jsonify({
+            'success': True,
+            'feed_id': feed.id,
+            'message': 'Feed added successfully'
+        })
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error adding feed via API: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/feed/suggest-selectors', methods=['POST'])
+def api_suggest_selectors():
+    """API endpoint to suggest selectors for a given URL"""
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        
+        if not url:
+            return jsonify({'error': 'URL is required'}), 400
+        
+        selectors = suggest_selectors(url)
+        
+        return jsonify({
+            'success': True,
+            'selectors': selectors
+        })
+    except Exception as e:
+        app.logger.error(f"Error suggesting selectors: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/feed/extraction-stats/<int:feed_id>')
+def api_feed_extraction_stats(feed_id):
+    """Get content extraction statistics for a feed"""
+    try:
+        # Get all items for this feed
+        items = FeedItem.query.filter_by(feed_source_id=feed_id).all()
+        
+        if not items:
+            return jsonify({
+                'error': 'No items found for this feed'
+            }), 404
+        
+        # Initialize stats
+        extraction_methods = {
+            'content_field': 0,
+            'content_encoded': 0,
+            'description': 0,
+            'summary': 0,
+            'custom_selectors': 0,
+            'none': 0
+        }
+        
+        full_content_count = 0
+        word_counts = []
+        
+        # Process each item
+        for item in items:
+            # Extract metadata if available
+            metadata = {}
+            if item.metadata:
+                try:
+                    metadata = json.loads(item.metadata)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Count extraction methods
+            method = metadata.get('extraction_method', 'none')
+            if method in extraction_methods:
+                extraction_methods[method] += 1
+            else:
+                extraction_methods['none'] += 1
+            
+            # Count full content items
+            if item.has_full_content:
+                full_content_count += 1
+            
+            # Collect word counts
+            if item.word_count:
+                word_counts.append(item.word_count)
+        
+        # Calculate averages
+        avg_word_count = int(sum(word_counts) / len(word_counts)) if word_counts else 0
+        
+        # Clean up extraction methods (remove zeros)
+        extraction_methods = {k: v for k, v in extraction_methods.items() if v > 0}
+        
+        return jsonify({
+            'extraction_methods': extraction_methods,
+            'full_content_count': full_content_count,
+            'partial_content_count': len(items) - full_content_count,
+            'avg_word_count': avg_word_count,
+            'total_items': len(items)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting extraction stats: {e}")
+        return jsonify({
+            'error': str(e)
+        }), 500
+
 @app.route('/feeds')
 def feed_list():
     # Get query parameters

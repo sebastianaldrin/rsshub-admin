@@ -84,6 +84,9 @@ class FeedItem(db.Model):
     word_count = db.Column(db.Integer, nullable=True)
     quality_issues = db.Column(db.Text, nullable=True)  # JSON list of issues
     
+    # Extraction metadata (JSON stored as string)
+    metadata = db.Column(db.Text, nullable=True)  # Stores extraction method and other metadata
+    
     def __repr__(self):
         return f'<FeedItem {self.title[:30]}>'
 

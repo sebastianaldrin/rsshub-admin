@@ -12,7 +12,7 @@ from models import db, FeedSource, FetchLog, FeedItem, Alert
 
 def fetch_and_parse_feed(feed_source, save_items=True):
     """
-    Fetch and parse an RSS feed from a FeedSource
+    Fetch and parse an RSS feed from a FeedSource with enhanced fallback handling
     
     Args:
         feed_source: FeedSource object
@@ -32,10 +32,23 @@ def fetch_and_parse_feed(feed_source, save_items=True):
     route = feed_source.rsshub_route.lstrip('/')
     full_url = urljoin(rsshub_base_url, route)
     
-    # Fetch the feed
     try:
-        response = requests.get(full_url, timeout=30)
-        response.raise_for_status()
+        # Fetch the feed - with timeout and retry logic
+        max_retries = 2
+        retry_count = 0
+        response = None
+        
+        while retry_count <= max_retries:
+            try:
+                response = requests.get(full_url, timeout=30)
+                response.raise_for_status()
+                break
+            except requests.exceptions.RequestException as e:
+                retry_count += 1
+                if retry_count > max_retries:
+                    raise
+                current_app.logger.warning(f"Retry {retry_count} for {feed_source.name}: {str(e)}")
+                time.sleep(1)  # Short delay before retry
         
         # Parse the feed
         feed_data = feedparser.parse(response.content)
@@ -53,6 +66,14 @@ def fetch_and_parse_feed(feed_source, save_items=True):
         content_lengths = []
         image_count = 0
         
+        # Custom selectors handling
+        custom_selectors = None
+        if feed_source.custom_selectors:
+            try:
+                custom_selectors = json.loads(feed_source.custom_selectors)
+            except json.JSONDecodeError:
+                current_app.logger.warning(f"Invalid custom_selectors JSON for {feed_source.name}")
+        
         # Process feed items
         if save_items and feed_data.entries:
             # Clear existing items for this source
@@ -66,16 +87,41 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                 guid = getattr(entry, 'id', link)
                 description = getattr(entry, 'summary', '')
                 
-                # Try different content fields
+                # Multi-tiered content extraction with fallbacks
                 content = ''
+                extraction_method = 'none'
+                
+                # Method 1: Try content field (best case)
                 if hasattr(entry, 'content'):
                     content = entry.content[0].value
+                    extraction_method = 'content_field'
+                
+                # Method 2: Try content_encoded field
                 elif hasattr(entry, 'content_encoded'):
                     content = entry.content_encoded
+                    extraction_method = 'content_encoded'
+                
+                # Method 3: Try description field
                 elif hasattr(entry, 'description'):
                     content = entry.description
+                    extraction_method = 'description'
                 
-                # Get author
+                # Method 4: Use summary as fallback
+                elif description:
+                    content = description
+                    extraction_method = 'summary'
+                
+                # Method 5: Apply custom selectors if available
+                if custom_selectors and link and (not content or len(content) < 200):
+                    try:
+                        content_from_selectors = fetch_content_with_selectors(link, custom_selectors)
+                        if content_from_selectors:
+                            content = content_from_selectors
+                            extraction_method = 'custom_selectors'
+                    except Exception as e:
+                        current_app.logger.error(f"Error with custom selectors for {link}: {str(e)}")
+                
+                # Get author with fallbacks
                 author = None
                 if hasattr(entry, 'author'):
                     author = entry.author
@@ -88,10 +134,17 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                     try:
                         published_at = datetime(*entry.published_parsed[:6])
                     except:
-                        pass
+                        # Try alternative date fields
+                        if hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+                            try:
+                                published_at = datetime(*entry.updated_parsed[:6])
+                            except:
+                                pass
                 
-                # Find image
+                # Find image with multiple fallback methods
                 image_url = None
+                
+                # Method 1: Check media_content
                 if hasattr(entry, 'media_content') and entry.media_content:
                     for media in entry.media_content:
                         if 'url' in media and (
@@ -101,12 +154,27 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                             image_url = media.get('url')
                             break
                 
-                # If no image found in media, try to extract from content
+                # Method 2: Check enclosures
+                if not image_url and hasattr(entry, 'enclosures') and entry.enclosures:
+                    for enclosure in entry.enclosures:
+                        if 'type' in enclosure and 'image' in enclosure.get('type', ''):
+                            image_url = enclosure.get('href', None) or enclosure.get('url', None)
+                            if image_url:
+                                break
+                
+                # Method 3: Extract from content HTML
                 if not image_url and content:
                     soup = BeautifulSoup(content, 'lxml')
                     img_tag = soup.find('img')
                     if img_tag and img_tag.get('src'):
                         image_url = img_tag.get('src')
+                
+                # Method 4: Try to get from media_thumbnail
+                if not image_url and hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
+                    for thumbnail in entry.media_thumbnail:
+                        if 'url' in thumbnail:
+                            image_url = thumbnail['url']
+                            break
                 
                 # Count images for metrics
                 if image_url:
@@ -136,7 +204,7 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                 if not image_url:
                     quality_issues.append("no_image")
                 
-                # Create new feed item
+                # Create new feed item with extraction method tracking
                 item = FeedItem(
                     feed_source_id=feed_source.id,
                     title=title,
@@ -149,7 +217,11 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                     published_at=published_at,
                     has_full_content=has_full_content,
                     word_count=word_count,
-                    quality_issues=json.dumps(quality_issues) if quality_issues else None
+                    quality_issues=json.dumps(quality_issues) if quality_issues else None,
+                    metadata=json.dumps({
+                        "extraction_method": extraction_method,
+                        "content_length": len(text_content) if text_content else 0
+                    })
                 )
                 db.session.add(item)
             
@@ -215,6 +287,43 @@ def fetch_and_parse_feed(feed_source, save_items=True):
         
         db.session.commit()
         return 'error', error_msg, None, 0
+
+
+def fetch_content_with_selectors(url, selectors):
+    """
+    Fetch content from original website using custom selectors
+    
+    Args:
+        url: URL to fetch
+        selectors: Dictionary of CSS selectors
+    
+    Returns:
+        str: Extracted content or empty string if failed
+    """
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # Use content selector if available
+        content_selector = selectors.get('content')
+        if content_selector:
+            content_element = soup.select_one(content_selector)
+            if content_element:
+                return str(content_element)
+        
+        # Fallback to article selector
+        article_selector = selectors.get('article')
+        if article_selector:
+            article_element = soup.select_one(article_selector)
+            if article_element:
+                return str(article_element)
+                
+        return ""
+    except Exception as e:
+        current_app.logger.error(f"Error fetching content with selectors from {url}: {str(e)}")
+        return ""
 
 
 def calculate_quality_score(item_count, avg_content_length, image_ratio):
@@ -341,7 +450,7 @@ def get_feed_preview(rsshub_route, max_items=3):
         
         preview_items = []
         for entry in feed_data.entries[:max_items]:
-            # Extract content
+            # Extract content with fallbacks
             content = ''
             if hasattr(entry, 'content'):
                 content = entry.content[0].value
@@ -349,9 +458,13 @@ def get_feed_preview(rsshub_route, max_items=3):
                 content = entry.content_encoded
             elif hasattr(entry, 'description'):
                 content = entry.description
+            elif hasattr(entry, 'summary'):
+                content = entry.summary
             
-            # Find image
+            # Find image with multiple fallbacks
             image_url = None
+            
+            # Method 1: Check media_content
             if hasattr(entry, 'media_content') and entry.media_content:
                 for media in entry.media_content:
                     if 'url' in media and (
@@ -361,20 +474,40 @@ def get_feed_preview(rsshub_route, max_items=3):
                         image_url = media.get('url')
                         break
             
-            # If no image found in media, try to extract from content
+            # Method 2: Check enclosures
+            if not image_url and hasattr(entry, 'enclosures') and entry.enclosures:
+                for enclosure in entry.enclosures:
+                    if 'type' in enclosure and 'image' in enclosure.get('type', ''):
+                        image_url = enclosure.get('href', None) or enclosure.get('url', None)
+                        if image_url:
+                            break
+            
+            # Method 3: Extract from content HTML
             if not image_url and content:
                 soup = BeautifulSoup(content, 'lxml')
                 img_tag = soup.find('img')
                 if img_tag and img_tag.get('src'):
                     image_url = img_tag.get('src')
             
+            # Method 4: Try to get from media_thumbnail
+            if not image_url and hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
+                for thumbnail in entry.media_thumbnail:
+                    if 'url' in thumbnail:
+                        image_url = thumbnail['url']
+                        break
+            
+            # Get text content for display
+            text_content = BeautifulSoup(content, 'lxml').get_text() if content else ''
+            
             item = {
                 'title': getattr(entry, 'title', 'No Title'),
                 'link': getattr(entry, 'link', ''),
                 'description': getattr(entry, 'summary', ''),
                 'content': content,
+                'text_content': text_content[:500] + '...' if len(text_content) > 500 else text_content,
                 'image_url': image_url,
-                'published': getattr(entry, 'published', None)
+                'published': getattr(entry, 'published', None),
+                'word_count': len(re.findall(r'\w+', text_content)) if text_content else 0,
             }
             preview_items.append(item)
         
@@ -383,3 +516,116 @@ def get_feed_preview(rsshub_route, max_items=3):
     except Exception as e:
         current_app.logger.error(f"Error previewing feed {rsshub_route}: {str(e)}")
         return None
+
+
+def generate_rsshub_route(site_info):
+    """
+    Generate RSSHub route based on site information
+    
+    Args:
+        site_info: Dictionary with site information including type and parameters
+    
+    Returns:
+        str: Generated RSSHub route
+    """
+    site_type = site_info.get('type', '')
+    
+    if site_type == 'generic':
+        return f"rsshub/radar?url={site_info.get('url', '')}"
+    
+    elif site_type == 'reddit':
+        subreddit = site_info.get('subreddit', '')
+        sort = site_info.get('sort', '')
+        if sort:
+            return f"reddit/r/{subreddit}/{sort}"
+        return f"reddit/r/{subreddit}"
+    
+    elif site_type == 'twitter':
+        username = site_info.get('username', '')
+        return f"twitter/user/{username}"
+    
+    elif site_type == 'youtube':
+        channel = site_info.get('channel', '')
+        return f"youtube/channel/{channel}"
+    
+    elif site_type == 'github':
+        username = site_info.get('username', '')
+        repo = site_info.get('repo', '')
+        if repo:
+            return f"github/repos/{username}/{repo}/releases"
+        return f"github/repos/{username}"
+    
+    return ""
+
+
+def suggest_selectors(url):
+    """
+    Suggest selectors for a given URL by analyzing page structure
+    
+    Args:
+        url: URL to analyze
+    
+    Returns:
+        dict: Suggested selectors
+    """
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        selectors = {}
+        
+        # Try to find article content
+        potential_content_selectors = [
+            'article', 
+            '.article', 
+            '.post', 
+            '.entry', 
+            '.content',
+            '#content',
+            '[itemprop="articleBody"]',
+            '.article-content',
+            '.post-content',
+            '.entry-content'
+        ]
+        
+        for selector in potential_content_selectors:
+            if soup.select_one(selector):
+                selectors['content'] = selector
+                break
+        
+        # Try to find title
+        potential_title_selectors = [
+            'h1',
+            '.title',
+            '.headline',
+            '[itemprop="headline"]',
+            '.article-title',
+            '.post-title'
+        ]
+        
+        for selector in potential_title_selectors:
+            if soup.select_one(selector):
+                selectors['title'] = selector
+                break
+        
+        # Try to find date
+        potential_date_selectors = [
+            '[itemprop="datePublished"]',
+            '.date',
+            '.published',
+            '.timestamp',
+            'time'
+        ]
+        
+        for selector in potential_date_selectors:
+            if soup.select_one(selector):
+                selectors['date'] = selector
+                break
+        
+        return selectors
+    
+    except Exception as e:
+        current_app.logger.error(f"Error suggesting selectors for {url}: {str(e)}")
+        return {}
