@@ -6,6 +6,12 @@
     <title>{% block title %}RSSHub Admin{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <!-- RSS autodiscovery - only add when viewing a feed -->
+    {% if request.endpoint == 'feed_detail' and feed %}
+    <link rel="alternate" type="application/rss+xml" title="{{ feed.name }}" href="{{ url_for('get_feed_as_rss', feed_id=feed.id) }}">
+    {% endif %}
+    
     {% block extra_css %}{% endblock %}
 </head>
 <body>

@@ -9,6 +9,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 import requests
 from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
+import html
+from flask import make_response
 
 from models import db, FeedSource, FetchLog, FeedItem, Alert, SystemSettings
 from utils import (
@@ -226,6 +229,90 @@ def suggest_selectors(url):
     except Exception as e:
         app.logger.error(f"Error suggesting selectors for {url}: {str(e)}")
         return {}
+
+@app.route('/feed/<int:feed_id>.xml')
+def get_feed_as_rss(feed_id):
+    """Serve a feed's content as RSS format for external RSS readers"""
+    try:
+        # Get the feed source
+        feed = FeedSource.query.get_or_404(feed_id)
+        
+        # Get recent items
+        items = FeedItem.query.filter_by(
+            feed_source_id=feed_id
+        ).order_by(FeedItem.published_at.desc()).limit(50).all()
+        
+        # Create RSS XML structure
+        rss = ET.Element('rss', {'version': '2.0', 
+                                 'xmlns:content': 'http://purl.org/rss/1.0/modules/content/',
+                                 'xmlns:atom': 'http://www.w3.org/2005/Atom'})
+        channel = ET.SubElement(rss, 'channel')
+        
+        # Feed metadata
+        ET.SubElement(channel, 'title').text = feed.name
+        ET.SubElement(channel, 'description').text = feed.description or f"Feed for {feed.name}"
+        ET.SubElement(channel, 'link').text = feed.original_url or request.url_root
+        ET.SubElement(channel, 'language').text = 'en-us'
+        ET.SubElement(channel, 'lastBuildDate').text = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')
+        
+        # Add atom:link for self-reference (RSS autodiscovery)
+        feed_url = url_for('get_feed_as_rss', feed_id=feed.id, _external=True)
+        ET.SubElement(channel, '{http://www.w3.org/2005/Atom}link', {
+            'href': feed_url,
+            'rel': 'self',
+            'type': 'application/rss+xml'
+        })
+        
+        # Add generator info
+        ET.SubElement(channel, 'generator').text = 'RSSHub Admin'
+        
+        # Process each item
+        for item in items:
+            item_elem = ET.SubElement(channel, 'item')
+            ET.SubElement(item_elem, 'title').text = item.title
+            ET.SubElement(item_elem, 'link').text = item.link
+            
+            # Use guid with permalink attribute
+            guid = ET.SubElement(item_elem, 'guid', {'isPermaLink': 'true'})
+            guid.text = item.guid or item.link
+            
+            # Publish date in RFC822 format
+            if item.published_at:
+                pub_date = item.published_at.strftime('%a, %d %b %Y %H:%M:%S GMT')
+                ET.SubElement(item_elem, 'pubDate').text = pub_date
+            
+            # Add description
+            desc = ET.SubElement(item_elem, 'description')
+            desc_text = item.description or ''
+            desc.text = desc_text
+            
+            # Add content:encoded for full content
+            if item.content:
+                content_elem = ET.SubElement(item_elem, '{http://purl.org/rss/1.0/modules/content/}encoded')
+                content_elem.text = item.content
+            
+            # Add author if available
+            if item.author:
+                ET.SubElement(item_elem, 'author').text = item.author
+                
+            # Add image as enclosure if available
+            if item.image_url:
+                ET.SubElement(item_elem, 'enclosure', {
+                    'url': item.image_url,
+                    'type': 'image/jpeg',
+                    'length': '0'
+                })
+        
+        # Create and send the response
+        xml_declaration = '<?xml version="1.0" encoding="UTF-8" ?>\n'
+        xml_str = ET.tostring(rss, encoding='utf-8', method='xml')
+        response = make_response(xml_declaration.encode('utf-8') + xml_str)
+        response.headers['Content-Type'] = 'application/rss+xml; charset=utf-8'
+        return response
+        
+    except Exception as e:
+        app.logger.error(f"Error generating RSS feed: {str(e)}")
+        return f"Error generating feed: {str(e)}", 500
 
 @app.route('/api/feed/suggest-selectors', methods=['POST'])
 def api_suggest_selectors():
