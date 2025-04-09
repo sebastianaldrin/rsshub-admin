@@ -10,13 +10,19 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     libpng-dev \
-    curl \
-    && curl -L https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css -o static/css/bootstrap.min.css \
-    && curl -L https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js -o static/js/chart.min.js \
-    && mkdir -p static/css static/js instance \
-    && touch static/css/main.css \
-    && touch static/js/main.js \
-    && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+    curl
+
+# Create directory structure first
+RUN mkdir -p static/css static/js instance
+
+# Then download static dependencies
+RUN curl -L https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css -o static/css/bootstrap.min.css && \
+    curl -L https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js -o static/js/chart.min.js && \
+    touch static/css/main.css && \
+    touch static/js/main.js
+
+# Clean up
+RUN apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 COPY requirements.txt .
