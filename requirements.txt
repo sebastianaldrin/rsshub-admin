@@ -9,3 +9,5 @@ APScheduler==3.10.4
 Flask-WTF==1.2.1
 Werkzeug==2.3.7
 gunicorn==21.2.0
+newspaper3k==0.2.8
+nltk==3.8.1
