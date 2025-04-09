@@ -516,21 +516,25 @@
                 }
             }
             
-            // Custom selectors tab - use custom route with domain
             if (activeTab === 'selectors') {
-                const url = document.getElementById('originUrl')?.value || '';
-                if (!url) return '';
-                
-                try {
-                    const domain = new URL(url).hostname.replace(/\./g, '-');
-                    return `custom/${domain}`;
-                } catch(e) {
-                    return '';
-                }
-            }
-            
-            return '';
-        }
+    const url = document.getElementById('originUrl')?.value || '';
+    if (!url) return '';
+    
+    try {
+        // Extract domain for newspaper3k custom route
+        let domain = new URL(url).hostname;
+        
+        // Remove www. prefix if present
+        domain = domain.replace('www.', '');
+        
+        // Convert dots to dashes for the route
+        domain = domain.replace(/\./g, '-');
+        
+        return `custom/${domain}`;
+    } catch(e) {
+        return '';
+    }
+}
         
         // Generate selectors JSON
         function generateSelectors() {

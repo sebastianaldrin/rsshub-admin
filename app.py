@@ -237,7 +237,13 @@ def api_suggest_selectors():
         if not url:
             return jsonify({'error': 'URL is required'}), 400
         
-        selectors = suggest_selectors(url)
+        # Newspaper3k approach doesn't need complex selectors
+        # Just return basic selectors to maintain API compatibility
+        selectors = {
+            'content': 'article',  # These selectors aren't actually used by newspaper3k
+            'title': 'h1',         # but we return them to maintain compatibility
+            'date': 'time'         # with the existing frontend
+        }
         
         return jsonify({
             'success': True,
