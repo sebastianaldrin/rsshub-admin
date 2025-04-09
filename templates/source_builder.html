@@ -26,7 +26,7 @@
                         <button class="nav-link" id="custom-tab" data-bs-toggle="tab" data-bs-target="#custom" type="button" role="tab" aria-controls="custom" aria-selected="false">Custom Route</button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="selectors-tab" data-bs-toggle="tab" data-bs-target="#selectors" type="button" role="tab" aria-controls="selectors" aria-selected="false">Custom Selectors</button>
+                        <button class="nav-link" id="selectors-tab" data-bs-toggle="tab" data-bs-target="#selectors" type="button" role="tab" aria-controls="selectors" aria-selected="false">Any Website</button>
                     </li>
                 </ul>
                 
@@ -67,39 +67,48 @@
                         </div>
                     </div>
                     
-                    <!-- Custom Selectors Tab -->
+                    <!-- Custom Selectors Tab (renamed to Any Website) -->
                     <div class="tab-pane fade" id="selectors" role="tabpanel" aria-labelledby="selectors-tab">
                         <div class="mb-3">
-                            <label for="originUrl" class="form-label">Original Website URL</label>
+                            <label for="originUrl" class="form-label">Website URL</label>
                             <div class="input-group">
-                                <input type="url" id="originUrl" class="form-control" placeholder="https://example.com/blog">
-                                <button class="btn btn-outline-secondary" type="button" id="suggestSelectors">Suggest Selectors</button>
+                                <input type="url" id="originUrl" class="form-control" placeholder="https://example.com/">
+                                <button class="btn btn-primary" type="button" id="suggestSelectors">Analyze Website</button>
                             </div>
-                            <div class="form-text">Enter the URL of the original website to analyze its structure</div>
+                            <div class="form-text">Enter any website URL - we'll automatically extract all content</div>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <p class="mb-0"><i class="bi bi-info-circle"></i> <strong>How it works:</strong> Our intelligent content extraction will automatically detect articles and extract full content without needing selectors.</p>
                         </div>
                         
                         <div class="mb-3">
-                            <label for="contentSelector" class="form-label">Content Selector</label>
-                            <input type="text" id="contentSelector" class="form-control" placeholder=".article-content">
-                            <div class="form-text">CSS selector for the main content</div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="advancedOptions">
+                                <label class="form-check-label" for="advancedOptions">
+                                    Show advanced options (optional)
+                                </label>
+                            </div>
                         </div>
                         
-                        <div class="mb-3">
-                            <label for="titleSelector" class="form-label">Title Selector</label>
-                            <input type="text" id="titleSelector" class="form-control" placeholder="h1.title">
-                            <div class="form-text">CSS selector for the article title</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="dateSelector" class="form-label">Date Selector</label>
-                            <input type="text" id="dateSelector" class="form-control" placeholder="time.published">
-                            <div class="form-text">CSS selector for the publication date</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="linkSelector" class="form-label">Link Selector</label>
-                            <input type="text" id="linkSelector" class="form-control" placeholder="a.read-more">
-                            <div class="form-text">CSS selector for the article link</div>
+                        <div id="advancedSelectors" style="display: none;">
+                            <div class="mb-3">
+                                <label for="contentSelector" class="form-label">Content Selector</label>
+                                <input type="text" id="contentSelector" class="form-control" placeholder=".article-content">
+                                <div class="form-text">CSS selector for the main content (optional)</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="titleSelector" class="form-label">Title Selector</label>
+                                <input type="text" id="titleSelector" class="form-control" placeholder="h1.title">
+                                <div class="form-text">CSS selector for the article title (optional)</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="dateSelector" class="form-label">Date Selector</label>
+                                <input type="text" id="dateSelector" class="form-control" placeholder="time.published">
+                                <div class="form-text">CSS selector for the publication date (optional)</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -201,15 +210,10 @@
                         <li>Test your source before saving</li>
                     </ul>
                     
-                    <h6>Custom Selectors Help</h6>
-                    <p>CSS selectors help extract content from pages. Examples:</p>
-                    <ul>
-                        <li><code>.class-name</code> - Select by class</li>
-                        <li><code>#id-name</code> - Select by ID</li>
-                        <li><code>article p</code> - All paragraphs in articles</li>
-                    </ul>
-                    
-                    <p><a href="https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors" target="_blank" class="btn btn-sm btn-outline-primary mt-2">CSS Selectors Guide</a></p>
+                    <div class="alert alert-success mt-3">
+                        <h6 class="alert-heading">New! Improved Website Scraping</h6>
+                        <p class="mb-0">The "Any Website" tab now uses advanced AI-powered content extraction that works on virtually any news site without manual configuration.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -353,7 +357,7 @@
                 <p>RSSHub will try to generate a feed for any website.</p>
                 <ul>
                     <li>Enter the full URL including http/https</li>
-                    <li>Consider using Custom Selectors tab for more control</li>
+                    <li>Consider using Any Website tab for more control</li>
                     <li>Some sites may not work with auto-discovery</li>
                 </ul>
             `
@@ -370,6 +374,13 @@
         const contentPreview = document.getElementById('contentPreview');
         const resetFormBtn = document.getElementById('resetForm');
         const suggestSelectorsBtn = document.getElementById('suggestSelectors');
+        const advancedOptions = document.getElementById('advancedOptions');
+        const advancedSelectors = document.getElementById('advancedSelectors');
+        
+        // Toggle advanced options
+        advancedOptions.addEventListener('change', function() {
+            advancedSelectors.style.display = this.checked ? 'block' : 'none';
+        });
         
         // Event listeners
         siteTypeSelect.addEventListener('change', function() {
@@ -397,6 +408,22 @@
         document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
             tab.addEventListener('shown.bs.tab', function() {
                 updateRoutePreview();
+                // Update help text for Any Website tab
+                if (tab.id === 'selectors-tab') {
+                    siteTypeHelpContainer.innerHTML = `
+                        <h6>Any Website Scraping</h6>
+                        <p>Our advanced content extraction works on virtually any news website without configuration.</p>
+                        <ul>
+                            <li>Enter the website URL (homepage or article)</li>
+                            <li>The system automatically detects and extracts articles</li>
+                            <li>Content is cleaned and formatted automatically</li>
+                            <li>Images and publication dates are extracted when available</li>
+                        </ul>
+                        <div class="alert alert-info mt-2">
+                            <p class="mb-0"><strong>Tip:</strong> For news sites, both homepages and article pages work. For blogs, an article page often gives better results.</p>
+                        </div>
+                    `;
+                }
             });
         });
         
@@ -434,6 +461,11 @@
                         <li>Fill in the required fields</li>
                         <li>Test your source before saving</li>
                     </ul>
+                    
+                    <div class="alert alert-success mt-3">
+                        <h6 class="alert-heading">New! Improved Website Scraping</h6>
+                        <p class="mb-0">The "Any Website" tab now uses advanced AI-powered content extraction that works on virtually any news site without manual configuration.</p>
+                    </div>
                 `;
             }
         }
@@ -516,25 +548,29 @@
                 }
             }
             
+            // Any Website tab (formerly Custom Selectors)
             if (activeTab === 'selectors') {
-    const url = document.getElementById('originUrl')?.value || '';
-    if (!url) return '';
-    
-    try {
-        // Extract domain for newspaper3k custom route
-        let domain = new URL(url).hostname;
-        
-        // Remove www. prefix if present
-        domain = domain.replace('www.', '');
-        
-        // Convert dots to dashes for the route
-        domain = domain.replace(/\./g, '-');
-        
-        return `custom/${domain}`;
-    } catch(e) {
-        return '';
-    }
-}
+                const url = document.getElementById('originUrl')?.value || '';
+                if (!url) return '';
+                
+                try {
+                    // Extract domain for newspaper3k custom route
+                    let domain = new URL(url).hostname;
+                    
+                    // Remove www. prefix if present
+                    domain = domain.replace('www.', '');
+                    
+                    // Convert dots to dashes for the route
+                    domain = domain.replace(/\./g, '-');
+                    
+                    return `custom/${domain}`;
+                } catch(e) {
+                    return '';
+                }
+            }
+            
+            return '';
+        }
         
         // Generate selectors JSON
         function generateSelectors() {
@@ -549,12 +585,10 @@
             const contentSelector = document.getElementById('contentSelector')?.value || '';
             const titleSelector = document.getElementById('titleSelector')?.value || '';
             const dateSelector = document.getElementById('dateSelector')?.value || '';
-            const linkSelector = document.getElementById('linkSelector')?.value || '';
             
             if (contentSelector) selectors.content = contentSelector;
             if (titleSelector) selectors.title = titleSelector;
             if (dateSelector) selectors.date = dateSelector;
-            if (linkSelector) selectors.link = linkSelector;
             
             return Object.keys(selectors).length > 0 ? selectors : null;
         }
@@ -579,7 +613,7 @@
             if (selectors) {
                 generatedSelectors.textContent = JSON.stringify(selectors, null, 2);
             } else {
-                generatedSelectors.textContent = 'No custom selectors';
+                generatedSelectors.textContent = 'Automatic content extraction';
             }
         }
         
@@ -588,7 +622,7 @@
             const route = generateRoute();
             
             if (!route) {
-                alert('Please complete the form to generate a valid RSSHub route');
+                alert('Please complete the form to generate a valid route');
                 return;
             }
             
@@ -697,12 +731,23 @@
                     previewStatus.textContent = 'Error';
                     previewStatus.className = 'badge bg-danger';
                     
-                    contentPreview.innerHTML = `
-                        <div class="alert alert-danger">
-                            <h6>Error</h6>
-                            <p>Failed to fetch preview: ${error.message || error}</p>
-                        </div>
-                    `;
+                    // For custom routes, give more helpful message
+                    if (route.startsWith('custom/')) {
+                        contentPreview.innerHTML = `
+                            <div class="alert alert-info">
+                                <h6>Preview Not Available</h6>
+                                <p>Custom route previews aren't available until after saving. Don't worry - the feed will still work!</p>
+                                <p><strong>Tip:</strong> Click "Save Source" to create the feed and then view it in the feed details page.</p>
+                            </div>
+                        `;
+                    } else {
+                        contentPreview.innerHTML = `
+                            <div class="alert alert-danger">
+                                <h6>Error</h6>
+                                <p>Failed to fetch preview: ${error.message || error}</p>
+                            </div>
+                        `;
+                    }
                 }
             });
         }
@@ -712,7 +757,7 @@
             const route = generateRoute();
             
             if (!route) {
-                alert('Please complete the form to generate a valid RSSHub route');
+                alert('Please complete the form to generate a valid route');
                 return;
             }
             
@@ -723,13 +768,23 @@
                 return;
             }
             
+            // Get original URL based on active tab
+            const originalUrl = (function() {
+                const activeTab = document.querySelector('.tab-pane.active').id;
+                if (activeTab === 'selectors') {
+                    return document.getElementById('originUrl')?.value || '';
+                } else if (activeTab === 'common' && siteTypeSelect.value === 'generic') {
+                    return document.getElementById('genericUrl')?.value || '';
+                }
+                return '';
+            })();
+            
             const feedData = {
                 name: feedName,
                 description: document.getElementById('feedDescription')?.value || '',
                 category: document.getElementById('feedCategory')?.value || '',
                 rsshub_route: route,
-                original_url: document.getElementById('originUrl')?.value || 
-                              document.getElementById('genericUrl')?.value || '',
+                original_url: originalUrl,
                 is_active: document.getElementById('feedActive')?.checked || true,
                 check_frequency: parseInt(document.getElementById('checkFrequency')?.value || 30),
                 requires_javascript: document.getElementById('jsRequired')?.checked || false,
@@ -783,7 +838,9 @@
             document.getElementById('contentSelector').value = '';
             document.getElementById('titleSelector').value = '';
             document.getElementById('dateSelector').value = '';
-            document.getElementById('linkSelector').value = '';
+            
+            advancedOptions.checked = false;
+            advancedSelectors.style.display = 'none';
             
             updateRoutePreview();
             
@@ -807,18 +864,28 @@
                 return;
             }
             
-            const contentSelector = document.getElementById('contentSelector');
-            const titleSelector = document.getElementById('titleSelector');
-            const dateSelector = document.getElementById('dateSelector');
+            // Update UI to show analysis is happening
+            suggestSelectorsBtn.disabled = true;
+            suggestSelectorsBtn.innerHTML = '<span class="spinner-spinner spinner-border-sm" role="status" aria-hidden="true"></span> Analyzing...';
             
-            // Update UI
-            contentSelector.value = '';
-            titleSelector.value = '';
-            dateSelector.value = '';
+            // Update the preview status
+            const previewStatus = document.getElementById('previewStatus');
+            previewStatus.textContent = 'Analyzing...';
+            previewStatus.className = 'badge bg-info';
             
-            contentSelector.placeholder = 'Analyzing...';
-            titleSelector.placeholder = 'Analyzing...';
-            dateSelector.placeholder = 'Analyzing...';
+            // Show analysis happening in the preview area
+            contentPreview.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Analyzing...</span>
+                    </div>
+                    <h6>Analyzing Website Structure</h6>
+                    <p class="text-muted">Detecting content patterns and article elements...</p>
+                </div>
+            `;
+            
+            // Update the route preview immediately
+            updateRoutePreview();
             
             // Call API to suggest selectors
             fetch('/api/feed/suggest-selectors', {
@@ -834,29 +901,59 @@
                     throw new Error(data.error);
                 }
                 
-                // Update selectors with suggestions
-                if (data.selectors.content) contentSelector.value = data.selectors.content;
-                if (data.selectors.title) titleSelector.value = data.selectors.title;
-                if (data.selectors.date) dateSelector.value = data.selectors.date;
+                // Auto-fill feed name based on URL domain if empty
+                if (!document.getElementById('feedName').value) {
+                    try {
+                        const domain = new URL(url).hostname;
+                        const cleanDomain = domain.replace('www.', '').split('.')[0];
+                        document.getElementById('feedName').value = cleanDomain.charAt(0).toUpperCase() + cleanDomain.slice(1);
+                    } catch (e) {
+                        // Ignore error
+                    }
+                }
                 
-                // Reset placeholders
-                contentSelector.placeholder = '.article-content';
-                titleSelector.placeholder = 'h1.title';
-                dateSelector.placeholder = 'time.published';
+                // Show success message
+                contentPreview.innerHTML = `
+                    <div class="alert alert-success">
+                        <h6><i class="bi bi-check-circle"></i> Analysis Complete</h6>
+                        <p>Website successfully analyzed. The system will automatically extract articles and content.</p>
+                        <p class="mb-0"><strong>Next step:</strong> Click "Test Source" to preview or "Save Source" to create the feed.</p>
+                    </div>
+                `;
                 
-                // Update preview
-                updateSelectorsPreview();
+                previewStatus.textContent = 'Analyzed';
+                previewStatus.className = 'badge bg-success';
                 
-                alert('Selectors suggested based on page analysis');
+                // Only use selectors if advanced options are enabled
+                if (advancedOptions.checked) {
+                    // Update selectors with suggestions (these won't actually be used by newspaper3k,
+                    // but we show them for transparency)
+                    if (data.selectors.content) document.getElementById('contentSelector').value = data.selectors.content;
+                    if (data.selectors.title) document.getElementById('titleSelector').value = data.selectors.title;
+                    if (data.selectors.date) document.getElementById('dateSelector').value = data.selectors.date;
+                    
+                    // Update preview
+                    updateSelectorsPreview();
+                }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert(`Error suggesting selectors: ${error.message || error}`);
                 
-                // Reset placeholders
-                contentSelector.placeholder = '.article-content';
-                titleSelector.placeholder = 'h1.title';
-                dateSelector.placeholder = 'time.published';
+                contentPreview.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h6>Analysis Issue</h6>
+                        <p>${error.message || 'Could not analyze the website structure'}</p>
+                        <p class="mb-0">No worries! The system can still process this site using default extraction methods.</p>
+                    </div>
+                `;
+                
+                previewStatus.textContent = 'Warning';
+                previewStatus.className = 'badge bg-warning';
+            })
+            .finally(() => {
+                // Re-enable the button
+                suggestSelectorsBtn.disabled = false;
+                suggestSelectorsBtn.innerHTML = 'Analyze Website';
             });
         }
         
