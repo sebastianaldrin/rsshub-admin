@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 import json
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from urllib.parse import urlparse, urljoin
 from flask import current_app
 from models import db, FeedSource, FetchLog, FeedItem, Alert
@@ -16,6 +16,15 @@ import traceback
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+def normalize_datetime(dt):
+    """Make all datetimes timezone-naive for consistent comparison"""
+    if dt is None:
+        return datetime.utcnow()
+    if dt.tzinfo is not None:
+        # Convert to UTC and remove timezone info
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 def fetch_and_parse_feed(feed_source, save_items=True):
     """
@@ -120,7 +129,7 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                         'description': article.text[:280] + '...' if len(article.text) > 280 else article.text,
                         'content': html_content,
                         'image_url': article.top_image,
-                        'published_at': article.publish_date or datetime.utcnow(),
+                        'published_at': normalize_datetime(article.publish_date),
                         'author': ', '.join(article.authors) if article.authors else None,
                         'has_full_content': True,
                         'word_count': len(article.text.split()) if article.text else 0,
@@ -143,7 +152,7 @@ def fetch_and_parse_feed(feed_source, save_items=True):
             feed_items = [item for item in feed_items if item['title'] and item['content']]
             
             # Sort by publication date (newest first)
-            feed_items.sort(key=lambda x: x['published_at'] if x['published_at'] else datetime.utcnow(), reverse=True)
+            feed_items.sort(key=lambda x: normalize_datetime(x['published_at']), reverse=True)
             
             # If no items could be extracted, return an error
             if not feed_items:
@@ -164,7 +173,7 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                         content=item['content'],
                         author=item.get('author'),
                         image_url=item.get('image_url'),
-                        published_at=item.get('published_at', datetime.utcnow()),
+                        published_at=normalize_datetime(item.get('published_at')),
                         has_full_content=item.get('has_full_content', False),
                         word_count=item.get('word_count', 0),
                         extraction_metadata=item.get('extraction_metadata')
@@ -415,7 +424,7 @@ def fetch_and_parse_feed(feed_source, save_items=True):
                     content=content,
                     author=author,
                     image_url=image_url,
-                    published_at=published_at,
+                    published_at=normalize_datetime(published_at),
                     has_full_content=has_full_content,
                     word_count=word_count,
                     quality_issues=json.dumps(quality_issues) if quality_issues else None,
@@ -867,7 +876,6 @@ def get_feed_preview(rsshub_route, max_items=3):
     except Exception as e:
         current_app.logger.error(f"Error previewing feed {rsshub_route}: {str(e)}")
         return None
-
 
 def suggest_selectors(url):
     """
